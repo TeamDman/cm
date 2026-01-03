@@ -115,6 +115,50 @@ pub fn remove_from_glob(home: &AppHome, pattern: &str) -> eyre::Result<Vec<PathB
     Ok(removed)
 }
 
+/// Add a list of paths to the persisted inputs. Paths are canonicalized before storing.
+pub fn add_paths(home: &AppHome, paths: &[PathBuf]) -> eyre::Result<Vec<PathBuf>> {
+    let mut new = BTreeSet::new();
+
+    for p in paths {
+        // canonicalize the matched path (fail if it cannot be canonicalized)
+        let cp = dunce::canonicalize(p)?;
+        new.insert(cp);
+    }
+
+    if new.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut current = load_inputs(home)?.into_iter().collect::<BTreeSet<_>>();
+    let added: Vec<PathBuf> = new.difference(&current).cloned().collect();
+
+    if added.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    for p in &added {
+        current.insert(p.clone());
+    }
+
+    save_inputs(home, &current)?;
+    Ok(added)
+}
+
+/// Remove all persisted inputs (clear the inputs list)
+pub fn clear_all(home: &AppHome) -> eyre::Result<()> {
+    // Remove the file if it exists; otherwise create an empty file to be explicit
+    let path = inputs_file_path(home)?;
+    if path.exists() {
+        fs::remove_file(&path)?;
+    } else {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let _ = fs::OpenOptions::new().create(true).write(true).truncate(true).open(&path)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +191,29 @@ mod tests {
         let remaining = load_inputs(&home)?;
         assert_eq!(remaining.len(), 1);
         assert!(remaining[0] != removed[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn add_paths_and_clear_all() -> eyre::Result<()> {
+        let td = tempdir()?;
+        let home = AppHome(td.path().to_path_buf());
+
+        let file1 = td.path().join("one2.txt");
+        File::create(&file1)?;
+
+        // add single path via add_paths
+        let added = add_paths(&home, &[file1.clone()])?;
+        assert_eq!(added.len(), 1);
+
+        let listed = load_inputs(&home)?;
+        assert_eq!(listed.len(), 1);
+
+        // clear all
+        clear_all(&home)?;
+        let listed2 = load_inputs(&home)?;
+        assert_eq!(listed2.len(), 0);
 
         Ok(())
     }
