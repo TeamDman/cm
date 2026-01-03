@@ -2,8 +2,9 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum JsonLogBehaviour {
+    #[default]
     None,
     Some(PathBuf),
     SomeAutomaticPath,
@@ -17,14 +18,10 @@ impl JsonLogBehaviour {
         match self {
             JsonLogBehaviour::None => None,
             JsonLogBehaviour::Some(path) => Some(Cow::Borrowed(path)),
-            JsonLogBehaviour::SomeAutomaticPath => Some(Cow::Owned(crate::tracing::default_json_log_path())),
+            JsonLogBehaviour::SomeAutomaticPath => {
+                Some(Cow::Owned(crate::tracing::default_json_log_path()))
+            }
         }
-    }
-}
-
-impl Default for JsonLogBehaviour {
-    fn default() -> Self {
-        JsonLogBehaviour::None
     }
 }
 

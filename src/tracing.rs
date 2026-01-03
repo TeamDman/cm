@@ -1,3 +1,4 @@
+use crate::cli::json_log_behaviour::JsonLogBehaviour;
 use chrono::Local;
 use eyre::Result;
 use std::fs::File;
@@ -10,8 +11,6 @@ use tracing_subscriber::filter::Directive;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
-
-use crate::cli::json_log_behaviour::JsonLogBehaviour;
 
 pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviour) -> Result<()> {
     let default_directive: Directive = level.into();

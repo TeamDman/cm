@@ -1,9 +1,8 @@
+use crate::cli::json_log_behaviour::JsonLogBehaviour;
+use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
 use clap::Args;
 use std::ffi::OsString;
-
-use crate::cli::json_log_behaviour::JsonLogBehaviour;
-use crate::cli::to_args::ToArgs;
 
 #[derive(Args, Default, Arbitrary, PartialEq, Debug)]
 pub struct GlobalArgs {

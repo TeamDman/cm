@@ -25,17 +25,16 @@ impl UserId {
         if path.exists() {
             let s = fs::read_to_string(&path)?;
             let mut lines = s.lines();
-            if let Some(id_line) = lines.next() {
-                if let Some(exp_line) = lines.next() {
-                    let id = Uuid::parse_str(id_line.trim())?;
-                    // New format: `expires {timestamp}` -> extract timestamp by splitting from the right
-                    let exp_str = exp_line.rsplit(' ').next().unwrap_or(exp_line.trim());
-                    let exp_dt =
-                        DateTime::parse_from_rfc3339(exp_str).map_err(|e| eyre::eyre!(e))?;
+            if let Some(id_line) = lines.next()
+                && let Some(exp_line) = lines.next()
+            {
+                let id = Uuid::parse_str(id_line.trim())?;
+                // New format: `expires {timestamp}` -> extract timestamp by splitting from the right
+                let exp_str = exp_line.rsplit(' ').next().unwrap_or(exp_line.trim());
+                let exp_dt = DateTime::parse_from_rfc3339(exp_str).map_err(|e| eyre::eyre!(e))?;
 
-                    if exp_dt.with_timezone(&Utc) > Utc::now() {
-                        return Ok(UserId(id));
-                    }
+                if exp_dt.with_timezone(&Utc) > Utc::now() {
+                    return Ok(UserId(id));
                 }
             }
         }
@@ -66,7 +65,10 @@ use tracing::warn;
 pub static USER_ID: Lazy<UserId> = Lazy::new(|| match UserId::load() {
     Ok(u) => u,
     Err(e) => {
-        warn!("Warning: failed to load user id: {}. Generating new one.", e);
+        warn!(
+            "Warning: failed to load user id: {}. Generating new one.",
+            e
+        );
         UserId(Uuid::new_v4())
     }
 });

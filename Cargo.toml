@@ -18,7 +18,24 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+# serde = { version = "1.0", features = ["derive"] } # use facet instead
+# serde_json = "1" # use facet instead
+facet = "0.41.0"
+facet-json = "0.41.0"
+sha2 = "0.10.9"
+hex = "0.4.3"
+facet-pretty = "0.41.0"
+atty = "0.2"
+glob = "0.3"
+dunce = "1"
+eframe = { version = "0.33", features = ["persistence"] }
 
 [dev-dependencies]
 # used by tests
 arbitrary = "1"
+tempfile = "3"
+
+[patch.crates-io]
+facet = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
+facet-json = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
+facet-pretty = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }

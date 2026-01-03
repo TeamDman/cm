@@ -75,7 +75,11 @@ pub static SITE_ID: Lazy<SiteId> = Lazy::new(|| {
         Ok(s) => s,
         Err(e) => {
             // If load fails, fallback to DEFAULT and log a warning
-            warn!("Warning: failed to load site id: {}. Using default {}", e, SiteId::DEFAULT);
+            warn!(
+                "Warning: failed to load site id: {}. Using default {}",
+                e,
+                SiteId::DEFAULT
+            );
             SiteId(SiteId::DEFAULT.to_string())
         }
     }
