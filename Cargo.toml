@@ -1,0 +1,23 @@
+[package]
+name = "cm"
+version = "0.1.0"
+edition = "2024"
+authors = ["Your Name <you@example.com>"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+eyre = "0.6"
+color-eyre = "0.5"
+arbitrary = { version = "1", features = ["derive"] }
+once_cell = "1"
+directories-next = "2"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+# used by tests
+arbitrary = "1"
