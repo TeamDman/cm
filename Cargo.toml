@@ -2,6 +2,7 @@
 name = "cm"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 authors = ["Your Name <you@example.com>"]
 
 [dependencies]
