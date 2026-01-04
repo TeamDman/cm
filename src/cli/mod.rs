@@ -17,12 +17,12 @@ pub struct Cli {
     pub global_args: GlobalArgs,
 
     #[clap(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 impl Cli {
     pub fn invoke(self) -> eyre::Result<()> {
-        self.command.invoke()
+        self.command.unwrap_or_default().invoke()
     }
 }
 
@@ -30,7 +30,9 @@ impl ToArgs for Cli {
     fn to_args(&self) -> Vec<OsString> {
         let mut args = Vec::new();
         args.extend(self.global_args.to_args());
-        args.extend(self.command.to_args());
+        if let Some(command) = &self.command {
+            args.extend(command.to_args());
+        }
         args
     }
 }

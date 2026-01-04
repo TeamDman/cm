@@ -31,6 +31,11 @@ pub enum Command {
     /// Clean cached API responses
     Clean(CleanArgs),
 }
+impl Default for Command {
+    fn default() -> Self {
+        Command::Gui(Default::default())
+    }
+}
 
 impl Command {
     pub fn invoke(self) -> eyre::Result<()> {

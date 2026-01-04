@@ -3,7 +3,7 @@ use arbitrary::Arbitrary;
 use clap::Args;
 use std::ffi::OsString;
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Args, Arbitrary, Clone, PartialEq, Debug, Default)]
 pub struct GuiArgs {}
 
 impl GuiArgs {
