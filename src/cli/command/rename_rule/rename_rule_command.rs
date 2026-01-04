@@ -20,7 +20,10 @@ pub enum RenameRuleCommand {
     /// List rules
     List(RenameRuleListArgs),
 
-    /// Remove rule by index
+    /// Print the path the rename rules live in
+    Path(RenameRulePathArgs),
+
+    /// Remove rule by id or --all
     Remove(RenameRuleRemoveArgs),
 }
 
@@ -29,6 +32,7 @@ impl RenameRuleCommand {
         match self {
             RenameRuleCommand::Add(a) => a.invoke(),
             RenameRuleCommand::List(a) => a.invoke(),
+            RenameRuleCommand::Path(a) => a.invoke(),
             RenameRuleCommand::Remove(a) => a.invoke(),
         }
     }
@@ -44,6 +48,10 @@ impl ToArgs for RenameRuleCommand {
             }
             RenameRuleCommand::List(a) => {
                 args.push("list".into());
+                args.extend(a.to_args());
+            }
+            RenameRuleCommand::Path(a) => {
+                args.push("path".into());
                 args.extend(a.to_args());
             }
             RenameRuleCommand::Remove(a) => {
@@ -117,8 +125,8 @@ impl RenameRuleListArgs {
     pub fn invoke(self) -> eyre::Result<()> {
         let listed = list_rules(&APP_HOME)?;
         info!("Found {} rename rules", listed.len());
-        for (i, rule) in listed {
-            println!("{}. {}", i, rule);
+        for (_i, rule) in listed {
+            println!("{}: {}", rule.id, rule);
         }
         Ok(())
     }
@@ -132,21 +140,43 @@ impl ToArgs for RenameRuleListArgs {
 
 #[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
 pub struct RenameRuleRemoveArgs {
-    /// 1-based rule index
-    pub index: usize,
+    /// Remove all rules
+    #[clap(long)]
+    pub all: bool,
+    /// Rule id (UUID). If omitted and --all is specified, removes all rules.
+    pub id: Option<String>,
 }
 
 impl RenameRuleRemoveArgs {
     pub fn invoke(self) -> eyre::Result<()> {
         let listed = list_rules(&APP_HOME)?;
-        if let Some((_i, rule)) = listed.into_iter().find(|(i, _)| *i == self.index) {
-            if remove_rule(&APP_HOME, rule.id)? {
-                println!("Removed rule {}", self.index);
-            } else {
-                println!("No rule {}", self.index);
+        if self.all {
+            if self.id.is_some() {
+                println!("Cannot specify an id with --all");
+                return Ok(());
+            }
+            let mut removed = 0usize;
+            for (_i, rule) in listed {
+                if remove_rule(&APP_HOME, rule.id)? {
+                    removed += 1;
+                }
+            }
+            println!("Removed {} rules", removed);
+        } else if let Some(id_str) = self.id {
+            match Uuid::parse_str(&id_str) {
+                Ok(id) => {
+                    if remove_rule(&APP_HOME, id)? {
+                        println!("Removed rule {}", id);
+                    } else {
+                        println!("No rule {}", id);
+                    }
+                }
+                Err(_) => {
+                    println!("Invalid UUID: {}", id_str);
+                }
             }
         } else {
-            println!("No rule {}", self.index);
+            println!("Specify an id or use --all to remove all rules");
         }
         Ok(())
     }
@@ -154,6 +184,30 @@ impl RenameRuleRemoveArgs {
 
 impl ToArgs for RenameRuleRemoveArgs {
     fn to_args(&self) -> Vec<OsString> {
-        vec![OsString::from(format!("{}", self.index))]
+        let mut rtn = Vec::new();
+        if self.all {
+            rtn.push("--all".into());
+        }
+        if let Some(id) = &self.id {
+            rtn.push(OsString::from(id.clone()));
+        }
+        rtn
+    }
+}
+
+#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+pub struct RenameRulePathArgs {}
+
+impl RenameRulePathArgs {
+    pub fn invoke(self) -> eyre::Result<()> {
+        let p = crate::rename_rules::rules_dir(&APP_HOME)?;
+        println!("{}", p.display());
+        Ok(())
+    }
+}
+
+impl ToArgs for RenameRulePathArgs {
+    fn to_args(&self) -> Vec<OsString> {
+        vec![]
     }
 }

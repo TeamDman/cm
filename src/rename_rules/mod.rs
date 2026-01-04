@@ -27,6 +27,11 @@ fn dir_for(home: &AppHome) -> eyre::Result<PathBuf> {
     Ok(dir)
 }
 
+/// Public helper to get the path to the rename rules directory
+pub fn rules_dir(home: &AppHome) -> eyre::Result<PathBuf> {
+    dir_for(home)
+}
+
 /// List rule file paths sorted by name
 fn list_rule_files(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
     let dir = dir_for(home)?;
@@ -39,7 +44,7 @@ fn list_rule_files(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
     Ok(v)
 }
 
-/// Add a new rule file and return its assigned 1-based index
+/// Add a new rule file and return its assigned UUID
 pub fn add_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<Uuid> {
     let dir = dir_for(home)?;
     let filename = format!("{}.{}", rule.id, FILE_EXT);
@@ -59,7 +64,7 @@ pub fn add_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<Uuid> {
     Ok(rule.id)
 }
 
-/// Remove a rule by 1-based index and renumber remaining files
+/// Remove a rule by UUID
 pub fn remove_rule(home: &AppHome, id: Uuid) -> eyre::Result<bool> {
     let dir = dir_for(home)?;
     let path = dir.join(format!("{}.{}", id, FILE_EXT));
