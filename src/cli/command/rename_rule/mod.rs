@@ -1,10 +1,9 @@
 pub mod rename_rule_command;
 
-pub use rename_rule_command::*;
-
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
 use clap::Args;
+pub use rename_rule_command::*;
 use std::ffi::OsString;
 
 #[derive(Args, Arbitrary, Clone, PartialEq, Debug)]

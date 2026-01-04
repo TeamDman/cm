@@ -8,9 +8,9 @@ use crate::rename_rules::remove_rule;
 use arbitrary::Arbitrary;
 use clap::Args;
 use clap::Subcommand;
-use tracing::info;
 use std::ffi::OsString;
-
+use tracing::info;
+use uuid::Uuid;
 
 #[derive(Subcommand, Clone, Arbitrary, PartialEq, Debug)]
 pub enum RenameRuleCommand {
@@ -82,12 +82,13 @@ impl RenameRuleAddArgs {
         }
 
         let rule = RenameRule {
+            id: Uuid::new_v4(),
             find: self.find,
             replace: self.replace,
             modifiers,
         };
-        let idx = add_rule(&APP_HOME, &rule)?;
-        println!("Added rule {}: {}", idx, rule);
+        let id = add_rule(&APP_HOME, &rule)?;
+        println!("Added rule {}: {}", id, rule);
         Ok(())
     }
 }
@@ -137,8 +138,13 @@ pub struct RenameRuleRemoveArgs {
 
 impl RenameRuleRemoveArgs {
     pub fn invoke(self) -> eyre::Result<()> {
-        if remove_rule(&APP_HOME, self.index)? {
-            println!("Removed rule {}", self.index);
+        let listed = list_rules(&APP_HOME)?;
+        if let Some((_i, rule)) = listed.into_iter().find(|(i, _)| *i == self.index) {
+            if remove_rule(&APP_HOME, rule.id)? {
+                println!("Removed rule {}", self.index);
+            } else {
+                println!("No rule {}", self.index);
+            }
         } else {
             println!("No rule {}", self.index);
         }

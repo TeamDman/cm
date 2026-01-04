@@ -18,8 +18,13 @@
 
 - [ ] Target dimensions
 - [ ] Target filesize
-- [ ] Reencode to better file format? Try them all and pick best?
+- [ ] Reencode to better file format? Try them all and pick best? can't be webp
 
 #### Metadata fetching
 
 - [ ] Search CM site to find the price for the given SKU if exists
+
+
+### New stuff
+
+Dump json from https://www.creativememories.ca/new.html

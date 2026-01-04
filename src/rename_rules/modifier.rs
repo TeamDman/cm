@@ -2,7 +2,7 @@ use crate::rename_rules::when_expr::WhenExpr;
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RenameRuleModifier {
     Always,
     CaseInsensitive,

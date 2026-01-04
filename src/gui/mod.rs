@@ -23,6 +23,7 @@ pub async fn run_gui() -> eyre::Result<()> {
 
 use crate::app_home::APP_HOME;
 use crate::inputs;
+use crate::rename_rules::RenameRule;
 use eframe::egui::Align2;
 use eframe::egui::Color32;
 use eframe::egui::Id;
@@ -45,13 +46,6 @@ use std::path::PathBuf;
 /// Color for path-type pins
 const PATH_COLOR: Color32 = Color32::from_rgb(0x00, 0x80, 0xb0);
 
-/// A find/replace rule for renaming files
-#[derive(Clone, Default)]
-struct RenameRule {
-    find: String,
-    replace: String,
-}
-
 /// Our node types for the pipeline
 #[derive(Clone, Default)]
 enum CmNode {
@@ -61,7 +55,10 @@ enum CmNode {
     /// Identifies image paths from input directories
     ImagePaths,
     /// Rename files using find/replace rules
-    RenameFiles { rules: Vec<RenameRule> },
+    RenameFiles {
+        preview_key: u64,
+        preview: Vec<PathBuf>,
+    },
 }
 
 /// Viewer for our node graph
@@ -83,7 +80,13 @@ impl SnarlViewer<CmNode> for CmViewer<'_> {
         match node {
             CmNode::Inputs => format!("Inputs ({} paths)", self.input_paths.len()),
             CmNode::ImagePaths => format!("Image Paths ({} images)", self.image_files.len()),
-            CmNode::RenameFiles { rules } => format!("Rename Files ({} rules)", rules.len()),
+            CmNode::RenameFiles { .. } => {
+                // Show count of global rules
+                match crate::rename_rules::list_rules(&crate::app_home::APP_HOME) {
+                    Ok(v) => format!("Rename Files ({} rules)", v.len()),
+                    Err(_) => "Rename Files".to_string(),
+                }
+            }
         }
     }
 
@@ -172,12 +175,12 @@ impl SnarlViewer<CmNode> for CmViewer<'_> {
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CmNode>) {
         // Allow valid connections between compatible nodes
-        let valid = match (&snarl[from.id.node], &snarl[to.id.node]) {
-            (CmNode::Inputs, CmNode::ImagePaths) => true,
-            (CmNode::ImagePaths, CmNode::RenameFiles { .. }) => true,
-            (CmNode::RenameFiles { .. }, CmNode::RenameFiles { .. }) => true,
-            _ => false,
-        };
+        let valid = matches!(
+            (&snarl[from.id.node], &snarl[to.id.node]),
+            (CmNode::Inputs, CmNode::ImagePaths)
+                | (CmNode::ImagePaths, CmNode::RenameFiles { .. })
+                | (CmNode::RenameFiles { .. }, CmNode::RenameFiles { .. })
+        );
 
         if valid {
             // Disconnect any existing connections to this input
@@ -206,7 +209,8 @@ impl SnarlViewer<CmNode> for CmViewer<'_> {
             snarl.insert_node(
                 pos,
                 CmNode::RenameFiles {
-                    rules: vec![RenameRule::default()],
+                    preview_key: 0,
+                    preview: Vec::new(),
                 },
             );
             ui.close();
@@ -299,7 +303,8 @@ impl CmViewer<'_> {
                 }
 
                 // Build a tree structure grouped by input directories
-                let grouped = group_files_by_input(&self.input_paths, &self.image_files);
+                let grouped =
+                    group_files_by_input(self.input_paths.as_slice(), self.image_files.as_slice());
 
                 // Use available size so ScrollArea fills the Resize container
                 let available = ui.available_size();
@@ -322,90 +327,186 @@ impl CmViewer<'_> {
         node_id: NodeId,
         snarl: &mut Snarl<CmNode>,
     ) {
-        // Check connection state before taking mutable borrow of snarl
+        use crate::rename_rules::RenameRuleModifier;
+        use crate::rename_rules::WhenExpr;
+
         let in_pin = snarl.in_pin(egui_snarl::InPinId {
             node: node_id,
             input: 0,
         });
         let connected = !in_pin.remotes.is_empty();
 
-        // Get mutable access to the rules
-        let rules = match &mut snarl[node_id] {
-            CmNode::RenameFiles { rules } => rules,
-            _ => return,
-        };
+        if !matches!(&snarl[node_id], CmNode::RenameFiles { .. }) {
+            return;
+        }
 
-        // Use node_id for stable resize widget ID
-        egui::Resize::default()
-            .id_salt(("rename_resize", node_id))
-            .default_size(egui::vec2(400.0, 450.0))
-            .min_size(egui::vec2(300.0, 200.0))
-            .show(ui, |ui| {
-                // Rules section
-                ui.label("Find & Replace Rules:");
-                ui.separator();
+        ui.vertical(|ui| {
+            ui.label("Find & Replace Rules:");
+            // ui.separator();
 
-                // Track if we need to remove a rule
-                let mut remove_idx: Option<usize> = None;
+                let mut listed =
+                    crate::rename_rules::list_rules(&crate::app_home::APP_HOME).unwrap_or_default();
 
-                // Show rules table
-                for (idx, rule) in rules.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        // Remove button
-                        if ui.small_button("✖").clicked() {
-                            remove_idx = Some(idx);
-                        }
-                        ui.label("Find:");
-                        ui.add(egui::TextEdit::singleline(&mut rule.find).desired_width(120.0));
-                        ui.label("->");
-                        ui.add(egui::TextEdit::singleline(&mut rule.replace).desired_width(120.0));
+                for (_, rule) in &mut listed {
+                    ui.group(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.small_button("✖").clicked() {
+                                let _ = crate::rename_rules::remove_rule(
+                                    &crate::app_home::APP_HOME,
+                                    rule.id,
+                                );
+                                if let CmNode::RenameFiles { preview_key, .. } = &mut snarl[node_id] {
+                                    *preview_key = 0;
+                                }
+                            }
+
+                            ui.label("Find:");
+                            ui.add(egui::TextEdit::singleline(&mut rule.find));
+                            ui.label("Replace:");
+                            ui.add(egui::TextEdit::singleline(&mut rule.replace));
+
+                            if ui.button("Save").clicked() {
+                                let _ =
+                                    crate::rename_rules::write_rule(&crate::app_home::APP_HOME, rule);
+                                if let CmNode::RenameFiles { preview_key, .. } = &mut snarl[node_id] {
+                                    *preview_key = 0;
+                                }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            let mut ci =
+                                rule.modifiers.contains(&RenameRuleModifier::CaseInsensitive);
+                            if ui.checkbox(&mut ci, "ci").changed() {
+                                if ci {
+                                    rule.modifiers.push(RenameRuleModifier::CaseInsensitive);
+                                } else {
+                                    rule.modifiers
+                                        .retain(|m| *m != RenameRuleModifier::CaseInsensitive);
+                                }
+                            }
+
+                            let mut always = rule.modifiers.contains(&RenameRuleModifier::Always);
+                            if ui.checkbox(&mut always, "always").changed() {
+                                if always {
+                                    rule.modifiers.push(RenameRuleModifier::Always);
+                                    rule.modifiers
+                                        .retain(|m| !matches!(m, RenameRuleModifier::When(_)));
+                                } else {
+                                    rule.modifiers.retain(|m| *m != RenameRuleModifier::Always);
+                                    rule.modifiers.push(RenameRuleModifier::When(
+                                        WhenExpr::LengthIsGreaterThan(50),
+                                    ));
+                                }
+                            }
+
+                            if !always {
+                                let len_val = rule
+                                    .modifiers
+                                    .iter()
+                                    .find_map(|m| {
+                                        if let RenameRuleModifier::When(
+                                            WhenExpr::LengthIsGreaterThan(n),
+                                        ) = m
+                                        {
+                                            Some(*n)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap_or(50);
+
+                                let mut v = len_val as u32;
+                                ui.label("len >");
+                                if ui
+                                    .add(egui::DragValue::new(&mut v).range(1..=1000))
+                                    .changed()
+                                {
+                                    rule.modifiers
+                                        .retain(|m| !matches!(m, RenameRuleModifier::When(_)));
+                                    rule.modifiers.push(RenameRuleModifier::When(
+                                        WhenExpr::LengthIsGreaterThan(v as usize),
+                                    ));
+                                }
+                            }
+                        });
                     });
                 }
 
-                // Remove rule if requested
-                if let Some(idx) = remove_idx {
-                    rules.remove(idx);
+            if ui.button("+ Add Rule").clicked() {
+                let _ = crate::rename_rules::add_rule(
+                    &crate::app_home::APP_HOME,
+                    &crate::rename_rules::RenameRule::default(),
+                );
+                if let CmNode::RenameFiles { preview_key, .. } = &mut snarl[node_id] {
+                    *preview_key = 0;
                 }
+            }
 
-                // Add rule button
-                if ui.button("+ Add Rule").clicked() {
-                    rules.push(RenameRule::default());
-                }
+            if !connected {
+                ui.colored_label(Color32::YELLOW, "(no input connected — preview hidden)");
+                ui.add_space(6.0);
+                ui.label("Connect an upstream node (e.g., Image Paths) to preview renamed files.");
+            } else {
+                egui::Resize::default()
+                    .id_salt(node_id)
+                    .default_size(egui::vec2(350.0, 400.0))
+                    .min_size(egui::vec2(200.0, 100.0))
+                    .show(ui, |ui| {
+                        let available = ui.available_size();
+                        ScrollArea::both()
+                            .id_salt("renames_preview_scroll")
+                            .auto_shrink([false, false])
+                            .max_height(available.y)
+                            .max_width(available.x)
+                            .show(ui, |ui| {
+                                let global_rules =
+                                    crate::rename_rules::list_rules(&crate::app_home::APP_HOME)
+                                        .map(|v| v.into_iter().map(|(_, r)| r).collect::<Vec<_>>())
+                                        .unwrap_or_default();
 
-                ui.separator();
-                ui.label("Preview:");
+                                use std::collections::hash_map::DefaultHasher;
+                                use std::hash::Hash;
+                                use std::hash::Hasher;
+                                let mut hasher = DefaultHasher::new();
+                                self.image_files.len().hash(&mut hasher);
+                                for r in &global_rules {
+                                    r.id.hash(&mut hasher);
+                                    r.find.hash(&mut hasher);
+                                    r.replace.hash(&mut hasher);
+                                    for m in &r.modifiers {
+                                        m.hash(&mut hasher);
+                                    }
+                                }
+                                let key = hasher.finish();
 
-                if !connected {
-                    ui.colored_label(Color32::YELLOW, "(no input connected — preview hidden)");
-                    ui.add_space(6.0);
-                    ui.label(
-                        "Connect an upstream node (e.g., Image Paths) to preview renamed files.",
-                    );
-                } else {
-                    // Compute renamed files preview
-                    let renamed_files = apply_rename_rules(&self.image_files, rules);
+                                if let CmNode::RenameFiles {
+                                    preview_key,
+                                    preview,
+                                } = &mut snarl[node_id]
+                                {
+                                    if *preview_key != key {
+                                        *preview = apply_rules_seq_compiled(
+                                            self.image_files.as_slice(),
+                                            &global_rules,
+                                        );
+                                        *preview_key = key;
+                                    }
 
-                    // Build grouped tree with rename info
-                    let grouped = group_files_with_renames(
-                        &self.input_paths,
-                        &self.image_files,
-                        &renamed_files,
-                    );
+                                    let grouped = group_files_with_renames(
+                                        self.input_paths.as_slice(),
+                                        self.image_files.as_slice(),
+                                        preview,
+                                    );
 
-                    // Use available size so ScrollArea fills the Resize container
-                    let available = ui.available_size();
-                    ScrollArea::both()
-                        .id_salt(("rename_scroll", node_id))
-                        .auto_shrink([false, false])
-                        .max_height(available.y)
-                        .max_width(available.x)
-                        .show(ui, |ui| {
-                            for (input_path, files_with_status) in &grouped {
-                                show_rename_group(ui, input_path, files_with_status);
-                            }
-                        });
-                }
-            });
+                                    for (input_path, files_with_status) in &grouped {
+                                        show_rename_group(ui, input_path, files_with_status);
+                                    }
+                                }
+                            });
+                    });
+            }
+        });
     }
 }
 
@@ -460,7 +561,7 @@ fn build_path_tree(paths: &[PathBuf]) -> TreeNode {
 }
 
 /// Show a group of files under an input directory
-fn show_input_group(ui: &mut egui::Ui, input_path: &PathBuf, relative_files: &[PathBuf]) {
+fn show_input_group(ui: &mut egui::Ui, input_path: &std::path::Path, relative_files: &[PathBuf]) {
     // Get the display name (last component of the input path)
     let display_name = input_path
         .file_name()
@@ -522,7 +623,7 @@ fn show_tree_node(ui: &mut egui::Ui, name: &str, node: &TreeNode, depth: usize) 
 }
 
 /// Check if a path is an image file
-fn is_image_file(path: &PathBuf) -> bool {
+fn is_image_file(path: &std::path::Path) -> bool {
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         matches!(
             ext.to_ascii_lowercase().as_str(),
@@ -533,28 +634,67 @@ fn is_image_file(path: &PathBuf) -> bool {
     }
 }
 
-/// Apply rename rules to a list of file paths, returning the renamed versions
-fn apply_rename_rules(files: &[PathBuf], rules: &[RenameRule]) -> Vec<PathBuf> {
+/// Apply rename rules (regex-based) sequentially to file base names
+fn apply_rules_seq_compiled(
+    files: &[PathBuf],
+    rules: &[crate::rename_rules::RenameRule],
+) -> Vec<PathBuf> {
+    // Precompile regexes once per rule
+    let compiled: Vec<Option<regex::Regex>> = rules
+        .iter()
+        .map(|r| {
+            let mut builder = regex::RegexBuilder::new(&r.find);
+            if r.modifiers
+                .contains(&crate::rename_rules::RenameRuleModifier::CaseInsensitive)
+            {
+                builder.case_insensitive(true);
+            }
+            match builder.build() {
+                Ok(re) => Some(re),
+                Err(_) => None,
+            }
+        })
+        .collect();
+
     files
         .iter()
         .map(|path| {
-            let mut name = path
+            let original = path
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Apply each rule in sequence
-            for rule in rules {
-                if !rule.find.is_empty() {
-                    name = name.replace(&rule.find, &rule.replace);
+            let mut cur = original.clone();
+            for (i, rule) in rules.iter().enumerate() {
+                // Evaluate When modifiers
+                let mut skip = false;
+                for m in &rule.modifiers {
+                    if let crate::rename_rules::RenameRuleModifier::When(
+                        crate::rename_rules::WhenExpr::LengthIsGreaterThan(n),
+                    ) = m
+                    {
+                        if cur.len() <= *n {
+                            skip = true;
+                            break;
+                        }
+                    }
+                }
+                if skip {
+                    continue;
+                }
+
+                if let Some(re) = &compiled[i] {
+                    let replaced = re.replace_all(&cur, &rule.replace).to_string();
+                    if replaced != cur {
+                        cur = replaced;
+                    }
                 }
             }
 
-            // Reconstruct path with new filename
             if let Some(parent) = path.parent() {
-                parent.join(&name)
+                parent.join(cur)
             } else {
-                PathBuf::from(&name)
+                PathBuf::from(cur)
             }
         })
         .collect()
@@ -635,7 +775,7 @@ fn build_rename_tree(files: &[FileRenameInfo]) -> RenameTreeNode {
 }
 
 /// Show a group of renamed files under an input directory
-fn show_rename_group(ui: &mut egui::Ui, input_path: &PathBuf, files: &[FileRenameInfo]) {
+fn show_rename_group(ui: &mut egui::Ui, input_path: &std::path::Path, files: &[FileRenameInfo]) {
     let display_name = input_path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
@@ -723,6 +863,9 @@ struct CmApp {
     logs_open: bool,
     /// Whether the about window is open
     about_open: bool,
+    /// Cached rename preview and key to avoid recomputing every frame
+    rename_preview_key: u64,
+    rename_preview: Vec<PathBuf>,
 }
 
 impl CmApp {
@@ -736,7 +879,8 @@ impl CmApp {
         let rename_id = snarl.insert_node(
             egui::pos2(700.0, 100.0),
             CmNode::RenameFiles {
-                rules: vec![RenameRule::default()],
+                preview_key: 0,
+                preview: Vec::new(),
             },
         );
 
@@ -775,6 +919,8 @@ impl CmApp {
             initialized: false,
             logs_open: true,
             about_open: false,
+            rename_preview_key: 0,
+            rename_preview: Vec::new(),
         }
     }
 
@@ -794,7 +940,10 @@ impl CmApp {
         // Derive image files from inputs
         match inputs::list_files(&APP_HOME) {
             Ok(files) => {
-                self.image_files = files.into_iter().filter(is_image_file).collect();
+                self.image_files = files
+                    .into_iter()
+                    .filter(|p| is_image_file(p.as_path()))
+                    .collect();
                 self.image_files.sort();
             }
             Err(e) => {

@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 /// Helper that resolves the application config directory and provides helper methods
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AppHome(pub PathBuf);
 
 impl AppHome {
@@ -33,6 +33,12 @@ impl AppHome {
         } else {
             Err(eyre::eyre!("Could not determine config directory"))
         }
+    }
+
+    /// Returns true if this AppHome equals the global APP_HOME
+    pub fn is_default(&self) -> bool {
+        // Compare absolute paths
+        self.0 == APP_HOME.0
     }
 }
 
