@@ -31,6 +31,7 @@ dunce = "1"
 eframe = { version = "0.33", features = ["persistence"] }
 # egui_tracing = "0.2.6"
 egui_tracing = { git = "https://github.com/TeamDman/egui_tracing", branch = "dev" }
+egui-snarl = "0.9.0"
 
 [dev-dependencies]
 # used by tests
