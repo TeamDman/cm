@@ -4,6 +4,7 @@ use tracing::info;
 /// Run the GUI. This is async so the caller can create a runtime; the function will
 /// block in place on the eframe app using `tokio::task::block_in_place`.
 pub async fn run_gui() -> eyre::Result<()> {
+    info!("hi");
     // Basic native options; keep it minimal for now.
     let native_options = eframe::NativeOptions::default();
 
@@ -32,10 +33,8 @@ struct SimpleApp {
     inputs: Vec<String>,
     files: Vec<PathBuf>,
     last_error: Option<String>,
-    last_message: Option<String>,
     loaded: bool,
-    log_open: bool,
-}
+} 
 
 impl SimpleApp {
     fn reload_inputs(&mut self) {
@@ -92,7 +91,6 @@ impl eframe::App for SimpleApp {
                     match inputs::clear_all(&APP_HOME) {
                         Ok(()) => {
                             self.reload_inputs();
-                            self.last_message = Some("Cleared all persisted inputs".to_string());
                             info!("Cleared all persisted inputs");
                             self.last_error = None;
                         }
@@ -110,9 +108,6 @@ impl eframe::App for SimpleApp {
                 return;
             }
 
-            if let Some(msg) = &self.last_message {
-                ui.colored_label(Color32::LIGHT_GREEN, msg);
-            }
 
             if self.inputs.is_empty() {
                 ui.label("(no persisted inputs)");
@@ -201,7 +196,7 @@ impl eframe::App for SimpleApp {
             if !added_paths.is_empty() {
                 match inputs::add_paths(&APP_HOME, &added_paths) {
                     Ok(added) => {
-                        self.last_message = Some(format!("Added {} inputs", added.len()));
+                        info!("Added {} inputs", added.len());
                         self.reload_inputs();
                     }
                     Err(e) => self.last_error = Some(format!("{}", e)),
@@ -209,23 +204,12 @@ impl eframe::App for SimpleApp {
             }
         }
 
-        // Logs window toggle
-        egui::Window::new("Logs Control")
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button(if self.log_open { "Hide Logs" } else { "Show Logs" }).clicked() {
-                        self.log_open = !self.log_open;
-                    }
-                });
-            });
+        // Logs Control removed — logs are always visible.
 
-        // Render logs window if open
-        if self.log_open {
-            egui::Window::new("Logs").resizable(true).show(ctx, |ui| {
-                let collector = crate::tracing::event_collector();
-                ui.add(egui_tracing::Logs::new(collector));
-            });
-        }
+        // Render logs window (always visible)
+        egui::Window::new("Logs").resizable(true).show(ctx, |ui| {
+            let collector = crate::tracing::event_collector();
+            ui.add(egui_tracing::Logs::new(collector));
+        });
     }
 }
