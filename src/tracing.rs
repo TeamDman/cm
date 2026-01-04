@@ -12,6 +12,22 @@ use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 
+use egui_tracing::tracing::collector::EventCollector;
+use once_cell::sync::Lazy;
+
+// Global collector used by the GUI logs widget. Cloneable cheap handle.
+static EVENT_COLLECTOR: Lazy<EventCollector> = Lazy::new(EventCollector::default);
+
+/// Return a handle to the global EventCollector for use in GUI widgets
+pub fn event_collector() -> EventCollector {
+    EVENT_COLLECTOR.clone()
+}
+
+/// Generate a default JSON log filename with timestamp
+pub fn default_json_log_path() -> PathBuf {
+    let timestamp = Local::now().format("%Y-%m-%d_%Hh%Mm%Ss").to_string();
+    PathBuf::from(format!("cm_log_{}.jsonl", timestamp))
+}
 pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviour) -> Result<()> {
     let default_directive: Directive = level.into();
     let env_filter = EnvFilter::builder()
@@ -55,6 +71,7 @@ pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviou
             .with(env_filter)
             .with(stderr_layer)
             .with(json_layer)
+            .with(EVENT_COLLECTOR.clone())
             .try_init()
         {
             tracing::warn!("Failed to initialize tracing subscriber: {}", error);
@@ -68,6 +85,7 @@ pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviou
         if let Err(error) = tracing_subscriber::registry()
             .with(env_filter)
             .with(stderr_layer)
+            .with(EVENT_COLLECTOR.clone())
             .try_init()
         {
             tracing::warn!("Failed to initialize tracing subscriber: {}", error);
@@ -77,10 +95,4 @@ pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviou
     }
 
     Ok(())
-}
-
-/// Generate a default JSON log filename with timestamp
-pub fn default_json_log_path() -> PathBuf {
-    let timestamp = Local::now().format("%Y-%m-%d_%Hh%Mm%Ss");
-    PathBuf::from(format!("cm_log_{}.jsonl", timestamp))
 }

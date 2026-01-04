@@ -159,6 +159,40 @@ pub fn clear_all(home: &AppHome) -> eyre::Result<()> {
     Ok(())
 }
 
+/// Return all files contained in the persisted input paths.
+/// If an input path is a file it is included; if it's a directory, all descendant files are included.
+pub fn list_files(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    for p in load_inputs(home)? {
+        if p.is_file() {
+            files.push(p);
+        } else if p.is_dir() {
+            add_files_from_dir(&p, &mut files)?;
+        }
+    }
+    Ok(files)
+}
+
+fn add_files_from_dir(dir: &PathBuf, out: &mut Vec<PathBuf>) -> eyre::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        match entry {
+            Ok(ent) => {
+                let p = ent.path();
+                if p.is_file() {
+                    out.push(p);
+                } else if p.is_dir() {
+                    add_files_from_dir(&p, out)?;
+                }
+            }
+            Err(e) => {
+                warn!("Failed to read dir entry in {}: {}", dir.display(), e);
+                continue;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +248,31 @@ mod tests {
         clear_all(&home)?;
         let listed2 = load_inputs(&home)?;
         assert_eq!(listed2.len(), 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn list_files_recurses() -> eyre::Result<()> {
+        let td = tempdir()?;
+        let home = AppHome(td.path().to_path_buf());
+
+        // create a dir with nested files
+        let dir = td.path().join("d1");
+        fs::create_dir_all(&dir)?;
+        let f1 = dir.join("a.txt");
+        let f2 = dir.join("sub").join("b.png");
+        fs::create_dir_all(f2.parent().unwrap())?;
+        File::create(&f1)?;
+        File::create(&f2)?;
+
+        // add the directory as an input
+        let _ = add_paths(&home, &[dir.clone()])?;
+
+        let files = list_files(&home)?;
+        // Should contain both a.txt and b.png
+        assert!(files.iter().any(|p| p.file_name().unwrap() == "a.txt"));
+        assert!(files.iter().any(|p| p.file_name().unwrap() == "b.png"));
 
         Ok(())
     }

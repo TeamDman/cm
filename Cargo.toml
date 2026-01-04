@@ -29,6 +29,8 @@ atty = "0.2"
 glob = "0.3"
 dunce = "1"
 eframe = { version = "0.33", features = ["persistence"] }
+# egui_tracing = "0.2.6"
+egui_tracing = { git = "https://github.com/TeamDman/egui_tracing", branch = "dev" }
 
 [dev-dependencies]
 # used by tests
@@ -39,3 +41,6 @@ tempfile = "3"
 facet = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
 facet-json = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
 facet-pretty = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
+
+[patch."https://github.com/TeamDman/egui_tracing"]
+egui_tracing = { path = "G:/Programming/Repos/egui_tracing/egui-tracing"}

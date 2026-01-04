@@ -30,9 +30,11 @@ use std::path::PathBuf;
 #[derive(Default)]
 struct SimpleApp {
     inputs: Vec<String>,
+    files: Vec<PathBuf>,
     last_error: Option<String>,
     last_message: Option<String>,
     loaded: bool,
+    log_open: bool,
 }
 
 impl SimpleApp {
@@ -48,6 +50,21 @@ impl SimpleApp {
             Err(e) => {
                 self.last_error = Some(format!("{}", e));
                 self.inputs.clear();
+            }
+        }
+
+        // Update files list too (non-fatal)
+        match inputs::list_files(&APP_HOME) {
+            Ok(mut f) => {
+                f.sort();
+                self.files = f;
+            }
+            Err(e) => {
+                // don't clobber earlier error, but note it
+                if self.last_error.is_none() {
+                    self.last_error = Some(format!("{}", e));
+                }
+                self.files.clear();
             }
         }
     }
@@ -76,6 +93,7 @@ impl eframe::App for SimpleApp {
                         Ok(()) => {
                             self.reload_inputs();
                             self.last_message = Some("Cleared all persisted inputs".to_string());
+                            info!("Cleared all persisted inputs");
                             self.last_error = None;
                         }
                         Err(e) => {
@@ -106,6 +124,40 @@ impl eframe::App for SimpleApp {
                     ui.label(p);
                 }
             });
+
+        });
+
+        // Input Files window: show files derived from inputs (files in dirs and files directly added)
+        egui::Window::new("Input Files").resizable(true).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Refresh").clicked() {
+                    self.reload_inputs();
+                }
+            });
+            ui.separator();
+
+            if self.files.is_empty() {
+                ui.label("(no files from inputs)");
+                return;
+            }
+
+            ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                for p in &self.files {
+                    // highlight image files green
+                    if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
+                        match ext.to_ascii_lowercase().as_str() {
+                            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "tiff" => {
+                                ui.colored_label(Color32::LIGHT_GREEN, p.display().to_string());
+                            }
+                            _ => {
+                                ui.label(p.display().to_string());
+                            }
+                        }
+                    } else {
+                        ui.label(p.display().to_string());
+                    }
+                }
+            });
         });
 
         // Global hover preview for files being dragged over the app
@@ -126,10 +178,10 @@ impl eframe::App for SimpleApp {
             });
 
             let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("file_drop_target")));
-            let screen_rect = ctx.screen_rect();
-            painter.rect_filled(screen_rect, 0.0, Color32::from_black_alpha(192));
+            let content_rect = ctx.content_rect();
+            painter.rect_filled(content_rect, 0.0, Color32::from_black_alpha(192));
             painter.text(
-                screen_rect.center(),
+                content_rect.center(),
                 Align2::CENTER_CENTER,
                 text,
                 TextStyle::Heading.resolve(&ctx.style()),
@@ -155,6 +207,25 @@ impl eframe::App for SimpleApp {
                     Err(e) => self.last_error = Some(format!("{}", e)),
                 }
             }
+        }
+
+        // Logs window toggle
+        egui::Window::new("Logs Control")
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button(if self.log_open { "Hide Logs" } else { "Show Logs" }).clicked() {
+                        self.log_open = !self.log_open;
+                    }
+                });
+            });
+
+        // Render logs window if open
+        if self.log_open {
+            egui::Window::new("Logs").resizable(true).show(ctx, |ui| {
+                let collector = crate::tracing::event_collector();
+                ui.add(egui_tracing::Logs::new(collector));
+            });
         }
     }
 }
