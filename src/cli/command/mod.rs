@@ -1,6 +1,7 @@
 pub mod clean;
 pub mod gui;
 pub mod input;
+pub mod rename_rule;
 pub mod search;
 pub mod site;
 
@@ -25,6 +26,9 @@ pub enum Command {
     /// Inputs persistent list (add/list/remove)
     Input(InputArgs),
 
+    /// Manage rename rules
+    RenameRule(rename_rule::RenameRuleArgs),
+
     /// Launch a graphical user interface
     Gui(GuiArgs),
 
@@ -43,6 +47,7 @@ impl Command {
             Command::Site(args) => args.invoke(),
             Command::Search(args) => args.invoke(),
             Command::Input(args) => args.invoke(),
+            Command::RenameRule(args) => args.invoke(),
             Command::Gui(args) => args.invoke(),
             Command::Clean(args) => args.invoke(),
         }
@@ -64,6 +69,10 @@ impl ToArgs for Command {
             Command::Input(input_args) => {
                 args.push("input".into());
                 args.extend(input_args.to_args());
+            }
+            Command::RenameRule(rename_rule_args) => {
+                args.push("rename-rule".into());
+                args.extend(rename_rule_args.to_args());
             }
             Command::Gui(gui_args) => {
                 args.push("gui".into());

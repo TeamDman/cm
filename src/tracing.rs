@@ -1,6 +1,8 @@
 use crate::cli::json_log_behaviour::JsonLogBehaviour;
 use chrono::Local;
+use egui_tracing::tracing::collector::EventCollector;
 use eyre::Result;
+use once_cell::sync::Lazy;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,9 +13,6 @@ use tracing_subscriber::filter::Directive;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
-
-use egui_tracing::tracing::collector::EventCollector;
-use once_cell::sync::Lazy;
 
 // Global collector used by the GUI logs widget. Cloneable cheap handle.
 static EVENT_COLLECTOR: Lazy<EventCollector> = Lazy::new(EventCollector::default);

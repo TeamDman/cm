@@ -8,7 +8,7 @@
 
 - [ ] Regular expressions to rename
 - [ ] 50 character (dynamic) length limit
-    - [ ] List of rules (substrings to remove) to help shorten length
+    - [ ] List of rules (substrings to remove) to help shorten length, e.g., remove "pack" iff len(name) > 50
 
 #### Image crop-to-content
 

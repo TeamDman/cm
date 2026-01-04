@@ -5,6 +5,7 @@ pub mod cache;
 pub mod cli;
 pub mod gui;
 pub mod inputs;
+pub mod rename_rules;
 pub mod session_id;
 pub mod site_id;
 pub mod tracing;
