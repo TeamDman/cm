@@ -154,9 +154,23 @@ pub fn clear_all(home: &AppHome) -> eyre::Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let _ = fs::OpenOptions::new().create(true).write(true).truncate(true).open(&path)?;
+        let _ = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&path)?;
     }
     Ok(())
+}
+
+/// Remove a single path from the persisted inputs. Returns true if the path was present and removed.
+pub fn remove_path(home: &AppHome, path_to_remove: &PathBuf) -> eyre::Result<bool> {
+    let mut current = load_inputs(home)?.into_iter().collect::<BTreeSet<_>>();
+    let was_present = current.remove(path_to_remove);
+    if was_present {
+        save_inputs(home, &current)?;
+    }
+    Ok(was_present)
 }
 
 /// Return all files contained in the persisted input paths.
