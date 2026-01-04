@@ -19,7 +19,7 @@ pub enum Command {
     /// Site related commands
     Site(SiteArgs),
 
-    /// Search (stub)
+    /// Search
     Search(SearchArgs),
 
     /// Inputs persistent list (add/list/remove)

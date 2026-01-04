@@ -32,7 +32,7 @@ impl std::fmt::Display for OutputFormat {
     }
 }
 
-/// Search for a query (stub)
+/// Search for a query
 #[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
 pub struct SearchArgs {
     /// Query to search for
