@@ -1,7 +1,6 @@
 use crate::app_home::APP_HOME;
 use crate::cli::to_args::ToArgs;
 use crate::rename_rules::RenameRule;
-use crate::rename_rules::RenameRuleModifier;
 use crate::rename_rules::add_rule;
 use crate::rename_rules::list_rules;
 use crate::rename_rules::remove_rule;
@@ -70,30 +69,22 @@ pub struct RenameRuleAddArgs {
     /// Replacement string (optional)
     #[clap(default_value = "")]
     pub replace: String,
-    /// Add a when expression like 'len > 50'
-    #[clap(long)]
-    pub when: Option<String>,
-    /// Case-insensitive match
-    #[clap(long = "case-insensitive")]
-    pub case_insensitive: bool,
+    /// Only apply when name is too long (longer than max name length)
+    #[clap(long = "only-when-too-long")]
+    pub only_when_too_long: bool,
+    /// Case-sensitive match (default is case-insensitive)
+    #[clap(long = "case-sensitive")]
+    pub case_sensitive: bool,
 }
 
 impl RenameRuleAddArgs {
     pub fn invoke(self) -> eyre::Result<()> {
-        let mut modifiers = Vec::new();
-        if self.case_insensitive {
-            modifiers.push(RenameRuleModifier::CaseInsensitive);
-        }
-        if let Some(w) = self.when {
-            let m = format!("when {}", w);
-            modifiers.push(m.parse()?);
-        }
-
         let rule = RenameRule {
             id: Uuid::new_v4(),
             find: self.find,
             replace: self.replace,
-            modifiers,
+            case_sensitive: self.case_sensitive,
+            only_when_name_too_long: self.only_when_too_long,
         };
         let id = add_rule(&APP_HOME, &rule)?;
         println!("Added rule {}: {}", id, rule);
@@ -107,12 +98,11 @@ impl ToArgs for RenameRuleAddArgs {
             OsString::from(self.find.clone()),
             OsString::from(self.replace.clone()),
         ];
-        if let Some(w) = &self.when {
-            rtn.push("--when".into());
-            rtn.push(OsString::from(w.clone()));
+        if self.only_when_too_long {
+            rtn.push("--only-when-too-long".into());
         }
-        if self.case_insensitive {
-            rtn.push("--case-insensitive".into());
+        if self.case_sensitive {
+            rtn.push("--case-sensitive".into());
         }
         rtn
     }

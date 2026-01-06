@@ -1,4 +1,3 @@
-use crate::rename_rules::RenameRuleModifier;
 use std::fmt;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -8,7 +7,8 @@ pub struct RenameRule {
     pub id: Uuid,
     pub find: String,
     pub replace: String,
-    pub modifiers: Vec<RenameRuleModifier>,
+    pub case_sensitive: bool,
+    pub only_when_name_too_long: bool,
 }
 
 impl Default for RenameRule {
@@ -17,76 +17,88 @@ impl Default for RenameRule {
             id: Uuid::new_v4(),
             find: String::new(),
             replace: String::new(),
-            modifiers: Vec::new(),
+            case_sensitive: false,
+            only_when_name_too_long: false,
         }
     }
 }
 
 impl RenameRule {
-    /// Serialize rule to file text
+    /// Serialize rule to file text (v2 format)
     pub fn to_file_text(&self) -> String {
         let mut s = String::new();
         s.push_str(&self.find);
         s.push('\n');
         s.push_str(&self.replace);
         s.push('\n');
-        for m in &self.modifiers {
-            s.push_str(&m.to_string());
-            s.push('\n');
+        if self.case_sensitive {
+            s.push_str("case-sensitive\n");
+        }
+        if self.only_when_name_too_long {
+            s.push_str("only-when-too-long\n");
         }
         s
     }
 
-    /// Parse from file text
+    /// Parse from file text (v2 format, also accepts legacy v1 format)
     pub fn from_file_text(text: &str) -> eyre::Result<Self> {
         let mut lines = text.lines();
         let find = lines.next().unwrap_or("").to_string();
         let replace = lines.next().unwrap_or("").to_string();
-        let mut modifiers = Vec::new();
-        for l in lines {
-            let l = l.trim();
+
+        let mut case_sensitive = false;
+        let mut only_when_name_too_long = false;
+
+        for line in lines {
+            let l = line.trim().to_ascii_lowercase();
             if l.is_empty() {
                 continue;
             }
-            let m = l.parse()?;
-            modifiers.push(m);
+            // v2 format
+            if l == "case-sensitive" {
+                case_sensitive = true;
+            } else if l == "only-when-too-long" {
+                only_when_name_too_long = true;
+            }
+            // Legacy v1 format compatibility
+            else if l == "case-insensitive" || l == "case insensitive" {
+                case_sensitive = false; // already default
+            } else if l == "always" {
+                only_when_name_too_long = false; // already default
+            } else if l.starts_with("when ") || l.starts_with("len") {
+                // Legacy "when len > N" - treat as only_when_name_too_long
+                only_when_name_too_long = true;
+            }
         }
+
         Ok(RenameRule {
             id: Uuid::new_v4(),
             find,
             replace,
-            modifiers,
+            case_sensitive,
+            only_when_name_too_long,
         })
     }
 
     /// Apply rule to a file name. Returns Some(new_name) if applied and changed, otherwise None.
-    pub fn apply(&self, name: &str) -> Option<String> {
+    pub fn apply(&self, name: &str, max_name_length: usize) -> Option<String> {
         if self.find.is_empty() {
             return None;
         }
 
-        // Evaluate modifiers: if there's a When modifier that does not hold, skip
-        for m in &self.modifiers {
-            if let crate::rename_rules::RenameRuleModifier::When(we) = m {
-                match we {
-                    crate::rename_rules::WhenExpr::LengthIsGreaterThan(n) => {
-                        if name.len() <= *n {
-                            return None;
-                        }
-                    }
-                }
-            }
+        // Check if rule only applies when name is too long
+        if self.only_when_name_too_long && name.len() <= max_name_length {
+            return None;
         }
 
         let mut builder = regex::RegexBuilder::new(&self.find);
-        // case-insensitive modifier
-        if self.modifiers.contains(&crate::rename_rules::RenameRuleModifier::CaseInsensitive) {
+        if !self.case_sensitive {
             builder.case_insensitive(true);
         }
 
         let re = match builder.build() {
             Ok(r) => r,
-            Err(_) => return None, // invalid regex -> skip
+            Err(_) => return None,
         };
 
         let replaced = re.replace_all(name, &self.replace).to_string();
@@ -108,25 +120,24 @@ impl fmt::Display for RenameRule {
 impl FromStr for RenameRule {
     type Err = eyre::Report;
 
-    /// Parse a single-line representation "find" "replace" [modifiers...]
+    /// Parse a single-line representation "find" "replace" [flags...]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Very simple parser for CLI convenience
         let parts: Vec<&str> = s.split('"').collect();
-        if parts.len() >= 3 {
+        if parts.len() >= 5 {
             let find = parts[1].to_string();
-            let replace = if parts.len() >= 5 {
-                parts[3].to_string()
-            } else {
-                String::new()
-            };
+            let replace = parts[3].to_string();
+            let rest = parts[4..].join("").to_ascii_lowercase();
+            let case_sensitive = rest.contains("case-sensitive");
+            let only_when_name_too_long = rest.contains("only-when-too-long");
             Ok(RenameRule {
                 id: Uuid::new_v4(),
                 find,
                 replace,
-                modifiers: Vec::new(),
+                case_sensitive,
+                only_when_name_too_long,
             })
         } else {
-            Err(eyre::eyre!("Failed to parse rule"))
+            Err(eyre::eyre!("Invalid rule format: {}", s))
         }
     }
 }

@@ -809,7 +809,7 @@ dependencies = [
  "directories-next",
  "dunce",
  "eframe",
- "egui-snarl",
+ "egui_tiles",
  "egui_tracing",
  "eyre",
  "facet",
@@ -1173,27 +1173,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui-scale"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7964ad2697e2b2df7157e5a0104c812c3773172c2a7b7dea95b57d9b5fd285f"
-dependencies = [
- "egui",
-]
-
-[[package]]
-name = "egui-snarl"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6358986338c35fe268c0647b410725babd5de772010e8e739e88cb11f5665da"
-dependencies = [
- "egui",
- "egui-scale",
- "slab",
- "smallvec",
-]
-
-[[package]]
 name = "egui-wgpu"
 version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1254,6 +1233,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_tiles"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ef184e589f0a80560bd3b63017634642d1ba112a8a8d9b29341f7cafd04601f"
+dependencies = [
+ "ahash",
+ "egui",
+ "itertools",
+ "log",
+ "serde",
+]
+
+[[package]]
 name = "egui_tracing"
 version = "0.2.6"
 dependencies = [
@@ -1266,6 +1258,12 @@ dependencies = [
  "tracing-subscriber 0.3.22",
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "either"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "emath"
@@ -2276,6 +2274,15 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "itoa"
