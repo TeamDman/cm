@@ -1,5 +1,6 @@
 //! Tile implementations for the CM GUI
 
+mod image_manipulation;
 mod image_preview;
 mod input_images;
 mod input_paths;
@@ -8,6 +9,7 @@ mod max_name_length;
 mod output_preview;
 mod rename_rules;
 
+pub use image_manipulation::*;
 pub use image_preview::*;
 pub use input_images::*;
 pub use input_paths::*;

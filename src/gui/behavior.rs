@@ -11,6 +11,8 @@ pub enum CmPane {
     InputPaths,
     /// Tree view of input images
     InputImages,
+    /// Image manipulation settings
+    ImageManipulation,
     /// Rename rules management
     RenameRules,
     /// Max name length setting
@@ -31,6 +33,7 @@ impl CmPane {
         match self {
             CmPane::InputPaths => "Input Paths",
             CmPane::InputImages => "Input Images",
+            CmPane::ImageManipulation => "Image Manipulation",
             CmPane::RenameRules => "Rename Rules",
             CmPane::MaxNameLength => "Max Name Length",
             CmPane::OutputPreview => "Output Preview",
@@ -60,6 +63,7 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
         match pane {
             CmPane::InputPaths => tiles::draw_input_paths_tile(ui, self.state),
             CmPane::InputImages => tiles::draw_input_images_tile(ui, self.state),
+            CmPane::ImageManipulation => tiles::draw_image_manipulation_tile(ui, self.state),
             CmPane::RenameRules => tiles::draw_rename_rules_tile(ui, self.state),
             CmPane::MaxNameLength => tiles::draw_max_name_length_tile(ui, self.state),
             CmPane::OutputPreview => tiles::draw_output_preview_tile(ui, self.state),
@@ -95,6 +99,7 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     // Create panes
     let input_paths_id = tiles.insert_pane(CmPane::InputPaths);
     let input_images_id = tiles.insert_pane(CmPane::InputImages);
+    let image_manipulation_id = tiles.insert_pane(CmPane::ImageManipulation);
     let rename_rules_id = tiles.insert_pane(CmPane::RenameRules);
     let max_name_length_id = tiles.insert_pane(CmPane::MaxNameLength);
     let output_preview_id = tiles.insert_pane(CmPane::OutputPreview);
@@ -107,14 +112,14 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     // Middle-left column: Image previews as tabs
     let previews_tabs = tiles.insert_tab_tile(vec![input_image_preview_id, output_image_preview_id]);
 
-    // Middle-right column: Rename Rules + Max Name Length (vertical)
-    let rules_column = tiles.insert_vertical_tile(vec![rename_rules_id, max_name_length_id]);
+    // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length)
+    let settings_column = tiles.insert_vertical_tile(vec![image_manipulation_id, rename_rules_id, max_name_length_id]);
 
     // Right column: Output Preview
     let right_column = output_preview_id;
 
     // Main horizontal layout
-    let root = tiles.insert_horizontal_tile(vec![left_column, previews_tabs, rules_column, right_column]);
+    let root = tiles.insert_horizontal_tile(vec![left_column, previews_tabs, settings_column, right_column]);
 
     egui_tiles::Tree::new("cm_tree", root, tiles)
 }

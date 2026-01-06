@@ -28,10 +28,10 @@ pub fn draw_input_images_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     ui,
                     input_path,
                     relative_files,
-                    state.input_preview_path.as_ref(),
+                    state.selected_input_file.as_ref(),
                 );
                 if let Some(clicked) = result.clicked_path {
-                    state.input_preview_path = Some(clicked);
+                    state.select_file(clicked);
                 }
             }
         });

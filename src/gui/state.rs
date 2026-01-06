@@ -1,6 +1,7 @@
 //! Shared application state for the CM GUI
 
 use crate::app_home::APP_HOME;
+use crate::image_processing::{self, ProcessingSettings, get_output_path};
 use crate::inputs;
 use crate::rename_rules::RenameRule;
 use crate::MAX_NAME_LENGTH;
@@ -32,12 +33,31 @@ pub struct AppState {
     pub logs_visible: bool,
     /// Whether the about window is open
     pub about_open: bool,
-    /// Currently previewed input image path
+    /// Currently selected input file (the source of truth for preview)
+    pub selected_input_file: Option<PathBuf>,
+    /// Currently previewed input image path (derived from selected_input_file)
     pub input_preview_path: Option<PathBuf>,
-    /// Currently previewed output image path
+    /// Currently previewed output image path (derived from selected_input_file)
     pub output_preview_path: Option<PathBuf>,
     /// Whether we've initialized
     pub initialized: bool,
+    /// Image manipulation: crop images to content
+    pub crop_to_content: bool,
+    /// Cached output info for the selected image
+    pub selected_output_info: Option<OutputImageInfo>,
+    /// Processing result message
+    pub processing_result: Option<String>,
+}
+
+/// Info about a processed output image
+#[derive(Clone, Debug)]
+pub struct OutputImageInfo {
+    pub estimated_size: u64,
+    pub original_width: u32,
+    pub original_height: u32,
+    pub output_width: u32,
+    pub output_height: u32,
+    pub was_cropped: bool,
 }
 
 impl Default for AppState {
@@ -54,9 +74,13 @@ impl Default for AppState {
             max_name_length: MAX_NAME_LENGTH.load(Ordering::SeqCst),
             logs_visible: false,
             about_open: false,
+            selected_input_file: None,
             input_preview_path: None,
             output_preview_path: None,
             initialized: false,
+            crop_to_content: false,
+            selected_output_info: None,
+            processing_result: None,
         }
     }
 }
@@ -167,6 +191,94 @@ impl AppState {
         if self.rename_preview_key != key {
             self.renamed_files = apply_rules_seq(&self.image_files, &self.rename_rules, self.max_name_length);
             self.rename_preview_key = key;
+        }
+    }
+
+    /// Select an input file and update both previews
+    pub fn select_file(&mut self, input_path: PathBuf) {
+        // First ensure renamed_files is up to date
+        self.update_rename_preview();
+        
+        self.selected_input_file = Some(input_path.clone());
+        self.input_preview_path = Some(input_path.clone());
+        
+        // Find the corresponding output path
+        if let Some(idx) = self.image_files.iter().position(|p| p == &input_path) {
+            if let Some(renamed) = self.renamed_files.get(idx) {
+                // Find which input root this belongs to
+                if let Some(input_root) = self.input_paths.iter().find(|r| input_path.starts_with(r)) {
+                    let renamed_name = renamed
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    
+                    if let Some(output_path) = get_output_path(&input_path, input_root, &renamed_name) {
+                        self.output_preview_path = Some(output_path);
+                    }
+                }
+            }
+        }
+        
+        // Update output info (process the image to get size/dimensions)
+        self.update_selected_output_info();
+    }
+
+    /// Update the output info for the selected file
+    pub fn update_selected_output_info(&mut self) {
+        let Some(ref input_path) = self.selected_input_file else {
+            self.selected_output_info = None;
+            return;
+        };
+        
+        let settings = ProcessingSettings {
+            crop_to_content: self.crop_to_content,
+        };
+        
+        match image_processing::process_image(input_path, &settings) {
+            Ok(processed) => {
+                self.selected_output_info = Some(OutputImageInfo {
+                    estimated_size: processed.estimated_size,
+                    original_width: processed.original_width,
+                    original_height: processed.original_height,
+                    output_width: processed.output_width,
+                    output_height: processed.output_height,
+                    was_cropped: processed.was_cropped,
+                });
+            }
+            Err(_) => {
+                self.selected_output_info = None;
+            }
+        }
+    }
+
+    /// Process all images according to current settings
+    pub fn process_all(&mut self) {
+        self.update_rename_preview();
+        
+        let settings = ProcessingSettings {
+            crop_to_content: self.crop_to_content,
+        };
+        
+        match image_processing::process_all_images(
+            &self.image_files,
+            &self.renamed_files,
+            &self.input_paths,
+            &settings,
+            None,
+        ) {
+            Ok(result) => {
+                self.processing_result = Some(format!(
+                    "Processed {} files. {} errors.",
+                    result.processed_count,
+                    result.error_count
+                ));
+                if !result.errors.is_empty() {
+                    info!("Processing errors: {:?}", result.errors);
+                }
+            }
+            Err(e) => {
+                self.processing_result = Some(format!("Processing failed: {}", e));
+            }
         }
     }
 }

@@ -9,16 +9,48 @@ pub fn draw_input_image_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
     let path = state.input_preview_path.clone();
     let should_clear = draw_image_preview(ui, path.as_ref(), "input");
     if should_clear {
+        state.selected_input_file = None;
         state.input_preview_path = None;
+        state.output_preview_path = None;
+        state.selected_output_info = None;
     }
 }
 
-/// Draw an image preview tile for output images
+/// Draw an image preview tile for output images (shows the input image for now)
+/// TODO: Show processed/cropped version when output preview is selected
 pub fn draw_output_image_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
-    let path = state.output_preview_path.clone();
+    // For output preview, we show the input file (since output doesn't exist yet)
+    // but we could show a processed version in the future
+    let path = state.input_preview_path.clone();
+    
+    // Show output info header
+    if let Some(ref output_info) = state.selected_output_info {
+        ui.horizontal(|ui| {
+            if output_info.was_cropped {
+                ui.label(format!(
+                    "📐 Cropped: {}x{} → {}x{}",
+                    output_info.original_width,
+                    output_info.original_height,
+                    output_info.output_width,
+                    output_info.output_height
+                ));
+            } else {
+                ui.label(format!(
+                    "📐 {}x{}",
+                    output_info.original_width,
+                    output_info.original_height
+                ));
+            }
+        });
+        ui.separator();
+    }
+    
     let should_clear = draw_image_preview(ui, path.as_ref(), "output");
     if should_clear {
+        state.selected_input_file = None;
+        state.input_preview_path = None;
         state.output_preview_path = None;
+        state.selected_output_info = None;
     }
 }
 

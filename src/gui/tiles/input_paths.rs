@@ -26,9 +26,9 @@ pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
         return;
     }
 
-    // Show paths with remove buttons
-    ScrollArea::vertical()
-        .id_salt("inputs_scroll")
+    // Show paths with remove buttons - use both scroll areas for long paths
+    ScrollArea::both()
+        .id_salt("inputs_paths_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             for path in state.input_paths.iter() {
@@ -37,9 +37,9 @@ pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     if ui.small_button("✖").clicked() {
                         state.path_to_remove = Some(path.clone());
                     }
-                    // Path label
+                    // Path label - use selectable_label to allow text selection
                     let display = path.display().to_string();
-                    ui.label(&display);
+                    ui.add(egui::Label::new(&display).wrap_mode(egui::TextWrapMode::Extend));
                 });
             }
         });

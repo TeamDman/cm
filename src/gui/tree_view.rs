@@ -189,6 +189,8 @@ pub fn show_input_group(
 /// Info about a file and whether it was renamed / is too long
 #[derive(Clone)]
 pub struct FileRenameInfo {
+    /// The original input file path (absolute)
+    pub original_input_path: PathBuf,
     /// The new (possibly renamed) relative path
     pub new_path: PathBuf,
     /// Whether the file was renamed (name differs from original)
@@ -220,6 +222,7 @@ pub fn group_files_with_renames(
                 let is_too_long = new_name.len() > max_name_length;
 
                 files_info.push(FileRenameInfo {
+                    original_input_path: original.clone(),
                     new_path: new_relative.to_path_buf(),
                     was_renamed,
                     is_too_long,
@@ -243,6 +246,8 @@ pub struct RenameTreeNode {
     pub is_file: bool,
     pub was_renamed: bool,
     pub is_too_long: bool,
+    /// The original input file path (for selection tracking)
+    pub original_input_path: Option<PathBuf>,
     pub full_path: Option<PathBuf>,
 }
 
@@ -263,6 +268,7 @@ pub fn build_rename_tree(files: &[FileRenameInfo], input_path: &std::path::Path)
                 current.is_file = true;
                 current.was_renamed = file_info.was_renamed;
                 current.is_too_long = file_info.is_too_long;
+                current.original_input_path = Some(file_info.original_input_path.clone());
                 current.full_path = Some(input_path.join(&file_info.new_path));
             }
         }
@@ -314,8 +320,8 @@ pub fn show_rename_tree_node(
                 Color32::LIGHT_GREEN
             };
 
-            // Check if this node is selected
-            let is_selected = node.full_path.as_ref().is_some_and(|p| Some(p) == selected_path);
+            // Check if this node is selected (compare against original input path)
+            let is_selected = node.original_input_path.as_ref().is_some_and(|p| Some(p) == selected_path);
 
             let label_text = format!("🖼 {name}");
             let response = if is_selected {
@@ -331,12 +337,17 @@ pub fn show_rename_tree_node(
             };
 
             if response.clicked() {
-                result.clicked_path = node.full_path.clone();
+                // Return the original input path so we can select the same file in both trees
+                result.clicked_path = node.original_input_path.clone();
             }
 
-            // Tooltip with full path
+            // Tooltip with output path info
             if let Some(ref path) = node.full_path {
-                response.on_hover_text(path.display().to_string());
+                let mut tooltip = format!("Output: {}", path.display());
+                if let Some(ref orig) = node.original_input_path {
+                    tooltip.push_str(&format!("\nInput: {}", orig.display()));
+                }
+                response.on_hover_text(tooltip);
             }
         });
     } else {
@@ -357,6 +368,7 @@ pub fn show_rename_tree_node(
 }
 
 /// Show a group of renamed files under an input directory
+#[allow(dead_code)]
 pub fn show_rename_group(
     ui: &mut egui::Ui,
     input_path: &std::path::Path,
@@ -364,14 +376,26 @@ pub fn show_rename_group(
     max_name_length: usize,
     selected_path: Option<&PathBuf>,
 ) -> TreeResult {
+    show_rename_group_with_output_path(ui, input_path, input_path, files, max_name_length, selected_path)
+}
+
+/// Show a group of renamed files with a custom output path display
+pub fn show_rename_group_with_output_path(
+    ui: &mut egui::Ui,
+    _input_path: &std::path::Path,
+    output_path: &std::path::Path,
+    files: &[FileRenameInfo],
+    max_name_length: usize,
+    selected_path: Option<&PathBuf>,
+) -> TreeResult {
     let mut result = TreeResult::default();
 
-    let display_name = input_path
+    let display_name = output_path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| input_path.display().to_string());
+        .unwrap_or_else(|| output_path.display().to_string());
 
-    let parent_path = input_path
+    let parent_path = output_path
         .parent()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
@@ -395,7 +419,7 @@ pub fn show_rename_group(
     let header = egui::CollapsingHeader::new(header_text).default_open(true);
 
     let response = header.show(ui, |ui| {
-        let tree = build_rename_tree(files, input_path);
+        let tree = build_rename_tree(files, output_path);
         result = show_rename_tree_children(ui, &tree, 0, selected_path);
     });
 

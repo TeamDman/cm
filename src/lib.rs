@@ -4,6 +4,7 @@ pub mod app_home;
 pub mod cache;
 pub mod cli;
 pub mod gui;
+pub mod image_processing;
 pub mod inputs;
 pub mod rename_rules;
 pub mod session_id;
