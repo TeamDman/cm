@@ -1,6 +1,7 @@
 pub mod clean;
 pub mod gui;
 pub mod input;
+pub mod max_name_length;
 pub mod rename_rule;
 pub mod search;
 pub mod site;
@@ -8,6 +9,7 @@ pub mod site;
 use crate::cli::command::clean::clean_command::CleanArgs;
 use crate::cli::command::gui::GuiArgs;
 use crate::cli::command::input::InputArgs;
+use crate::cli::command::max_name_length::MaxNameLengthArgs;
 use crate::cli::command::search::search_command::SearchArgs;
 use crate::cli::command::site::SiteArgs;
 use crate::cli::to_args::ToArgs;
@@ -19,6 +21,9 @@ use std::ffi::OsString;
 pub enum Command {
     /// Site related commands
     Site(SiteArgs),
+
+    /// Max name length commands
+    MaxNameLength(MaxNameLengthArgs),
 
     /// Search
     Search(SearchArgs),
@@ -45,6 +50,7 @@ impl Command {
     pub fn invoke(self) -> eyre::Result<()> {
         match self {
             Command::Site(args) => args.invoke(),
+            Command::MaxNameLength(args) => args.invoke(),
             Command::Search(args) => args.invoke(),
             Command::Input(args) => args.invoke(),
             Command::RenameRule(args) => args.invoke(),
@@ -61,6 +67,10 @@ impl ToArgs for Command {
             Command::Site(site_args) => {
                 args.push("site".into());
                 args.extend(site_args.to_args());
+            }
+            Command::MaxNameLength(max_args) => {
+                args.push("max-name-length".into());
+                args.extend(max_args.to_args());
             }
             Command::Search(search_args) => {
                 args.push("search".into());

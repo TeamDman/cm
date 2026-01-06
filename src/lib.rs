@@ -8,6 +8,7 @@ pub mod inputs;
 pub mod rename_rules;
 pub mod session_id;
 pub mod site_id;
+pub mod max_name_length;
 pub mod tracing;
 pub mod user_id;
 
@@ -16,6 +17,7 @@ use clap::CommandFactory;
 use clap::FromArgMatches;
 pub use session_id::*;
 pub use site_id::*;
+pub use max_name_length::*;
 pub use user_id::*;
 
 // Entrypoint matching the pattern in teamy-rust-cli

@@ -342,12 +342,14 @@ impl CmViewer<'_> {
 
         ui.vertical(|ui| {
             ui.label("Find & Replace Rules:");
-            // ui.separator();
+            // ui.separator(); // THIS CAUSES THE PANEL TO INFINITELY EXPAND, DO NOT UNCOMMENT!
 
                 let mut listed =
                     crate::rename_rules::list_rules(&crate::app_home::APP_HOME).unwrap_or_default();
 
                 for (_, rule) in &mut listed {
+                    let mut rule_changed = false;
+
                     ui.group(|ui| {
                         ui.horizontal_wrapped(|ui| {
                             if ui.small_button("✖").clicked() {
@@ -361,29 +363,26 @@ impl CmViewer<'_> {
                             }
 
                             ui.label("Find:");
-                            ui.add(egui::TextEdit::singleline(&mut rule.find));
+                            if ui.add(egui::TextEdit::singleline(&mut rule.find)).changed() {
+                                rule_changed = true;
+                            }
                             ui.label("Replace:");
-                            ui.add(egui::TextEdit::singleline(&mut rule.replace));
-
-                            if ui.button("Save").clicked() {
-                                let _ =
-                                    crate::rename_rules::write_rule(&crate::app_home::APP_HOME, rule);
-                                if let CmNode::RenameFiles { preview_key, .. } = &mut snarl[node_id] {
-                                    *preview_key = 0;
-                                }
+                            if ui.add(egui::TextEdit::singleline(&mut rule.replace)).changed() {
+                                rule_changed = true;
                             }
                         });
 
                         ui.horizontal(|ui| {
                             let mut ci =
                                 rule.modifiers.contains(&RenameRuleModifier::CaseInsensitive);
-                            if ui.checkbox(&mut ci, "ci").changed() {
+                            if ui.checkbox(&mut ci, "case insensitive").changed() {
                                 if ci {
                                     rule.modifiers.push(RenameRuleModifier::CaseInsensitive);
                                 } else {
                                     rule.modifiers
                                         .retain(|m| *m != RenameRuleModifier::CaseInsensitive);
                                 }
+                                rule_changed = true;
                             }
 
                             let mut always = rule.modifiers.contains(&RenameRuleModifier::Always);
@@ -398,6 +397,7 @@ impl CmViewer<'_> {
                                         WhenExpr::LengthIsGreaterThan(50),
                                     ));
                                 }
+                                rule_changed = true;
                             }
 
                             if !always {
@@ -427,10 +427,18 @@ impl CmViewer<'_> {
                                     rule.modifiers.push(RenameRuleModifier::When(
                                         WhenExpr::LengthIsGreaterThan(v as usize),
                                     ));
+                                    rule_changed = true;
                                 }
                             }
                         });
                     });
+
+                    if rule_changed {
+                        let _ = crate::rename_rules::write_rule(&crate::app_home::APP_HOME, rule);
+                        if let CmNode::RenameFiles { preview_key, .. } = &mut snarl[node_id] {
+                            *preview_key = 0;
+                        }
+                    }
                 }
 
             if ui.button("+ Add Rule").clicked() {
@@ -917,7 +925,7 @@ impl CmApp {
             clear_all: false,
             last_error: None,
             initialized: false,
-            logs_open: true,
+            logs_open: false,
             about_open: false,
             rename_preview_key: 0,
             rename_preview: Vec::new(),
