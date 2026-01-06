@@ -158,6 +158,7 @@ impl AppState {
             r.id.hash(&mut hasher);
             r.find.hash(&mut hasher);
             r.replace.hash(&mut hasher);
+            r.enabled.hash(&mut hasher);
             r.case_sensitive.hash(&mut hasher);
             r.only_when_name_too_long.hash(&mut hasher);
         }
@@ -206,6 +207,11 @@ fn apply_rules_seq(files: &[PathBuf], rules: &[RenameRule], max_name_length: usi
 
             let mut cur = original.clone();
             for (i, rule) in rules.iter().enumerate() {
+                // Skip disabled rules
+                if !rule.enabled {
+                    continue;
+                }
+
                 // Check if rule only applies when name is too long
                 if rule.only_when_name_too_long && cur.len() <= max_name_length {
                     continue;

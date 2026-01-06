@@ -42,6 +42,10 @@ pub fn draw_rename_rules_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     });
 
                     ui.horizontal(|ui| {
+                        if ui.checkbox(&mut rule.enabled, "enabled").changed() {
+                            rule_changed = true;
+                        }
+
                         if ui.checkbox(&mut rule.case_sensitive, "case sensitive").changed() {
                             rule_changed = true;
                         }

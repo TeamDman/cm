@@ -75,6 +75,9 @@ pub struct RenameRuleAddArgs {
     /// Case-sensitive match (default is case-insensitive)
     #[clap(long = "case-sensitive")]
     pub case_sensitive: bool,
+    /// Create the rule in a disabled state
+    #[clap(long = "disabled")]
+    pub disabled: bool,
 }
 
 impl RenameRuleAddArgs {
@@ -83,6 +86,7 @@ impl RenameRuleAddArgs {
             id: Uuid::new_v4(),
             find: self.find,
             replace: self.replace,
+            enabled: !self.disabled,
             case_sensitive: self.case_sensitive,
             only_when_name_too_long: self.only_when_too_long,
         };
@@ -103,6 +107,9 @@ impl ToArgs for RenameRuleAddArgs {
         }
         if self.case_sensitive {
             rtn.push("--case-sensitive".into());
+        }
+        if self.disabled {
+            rtn.push("--disabled".into());
         }
         rtn
     }

@@ -7,6 +7,7 @@ pub struct RenameRule {
     pub id: Uuid,
     pub find: String,
     pub replace: String,
+    pub enabled: bool,
     pub case_sensitive: bool,
     pub only_when_name_too_long: bool,
 }
@@ -17,6 +18,7 @@ impl Default for RenameRule {
             id: Uuid::new_v4(),
             find: String::new(),
             replace: String::new(),
+            enabled: true,
             case_sensitive: false,
             only_when_name_too_long: false,
         }
@@ -31,6 +33,9 @@ impl RenameRule {
         s.push('\n');
         s.push_str(&self.replace);
         s.push('\n');
+        if !self.enabled {
+            s.push_str("disabled\n");
+        }
         if self.case_sensitive {
             s.push_str("case-sensitive\n");
         }
@@ -46,6 +51,7 @@ impl RenameRule {
         let find = lines.next().unwrap_or("").to_string();
         let replace = lines.next().unwrap_or("").to_string();
 
+        let mut enabled = true;
         let mut case_sensitive = false;
         let mut only_when_name_too_long = false;
 
@@ -55,7 +61,9 @@ impl RenameRule {
                 continue;
             }
             // v2 format
-            if l == "case-sensitive" {
+            if l == "disabled" {
+                enabled = false;
+            } else if l == "case-sensitive" {
                 case_sensitive = true;
             } else if l == "only-when-too-long" {
                 only_when_name_too_long = true;
@@ -75,6 +83,7 @@ impl RenameRule {
             id: Uuid::new_v4(),
             find,
             replace,
+            enabled,
             case_sensitive,
             only_when_name_too_long,
         })
@@ -82,7 +91,7 @@ impl RenameRule {
 
     /// Apply rule to a file name. Returns Some(new_name) if applied and changed, otherwise None.
     pub fn apply(&self, name: &str, max_name_length: usize) -> Option<String> {
-        if self.find.is_empty() {
+        if !self.enabled || self.find.is_empty() {
             return None;
         }
 
@@ -127,12 +136,14 @@ impl FromStr for RenameRule {
             let find = parts[1].to_string();
             let replace = parts[3].to_string();
             let rest = parts[4..].join("").to_ascii_lowercase();
+            let enabled = !rest.contains("disabled");
             let case_sensitive = rest.contains("case-sensitive");
             let only_when_name_too_long = rest.contains("only-when-too-long");
             Ok(RenameRule {
                 id: Uuid::new_v4(),
                 find,
                 replace,
+                enabled,
                 case_sensitive,
                 only_when_name_too_long,
             })
