@@ -13,6 +13,9 @@ pub fn draw_input_images_tile(ui: &mut egui::Ui, state: &mut AppState) {
         return;
     }
 
+    ui.label("Click an image to preview it:");
+    ui.separator();
+
     // Build a tree structure grouped by input directories
     let grouped = group_files_by_input(&state.input_paths, &state.image_files);
 
@@ -21,7 +24,15 @@ pub fn draw_input_images_tile(ui: &mut egui::Ui, state: &mut AppState) {
         .auto_shrink([false, false])
         .show(ui, |ui| {
             for (input_path, relative_files) in &grouped {
-                show_input_group(ui, input_path, relative_files);
+                let result = show_input_group(
+                    ui,
+                    input_path,
+                    relative_files,
+                    state.input_preview_path.as_ref(),
+                );
+                if let Some(clicked) = result.clicked_path {
+                    state.input_preview_path = Some(clicked);
+                }
             }
         });
 }

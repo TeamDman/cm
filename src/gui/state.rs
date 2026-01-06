@@ -8,32 +8,6 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use tracing::info;
 
-/// Click behavior when selecting files in tree views
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum ClickBehavior {
-    /// Open a new preview tile for each clicked file
-    OpenNewTile,
-    /// Replace the last opened preview tile of the same type
-    #[default]
-    ReplaceLastTile,
-}
-
-impl ClickBehavior {
-    pub fn label(&self) -> &'static str {
-        match self {
-            ClickBehavior::OpenNewTile => "Open new tile",
-            ClickBehavior::ReplaceLastTile => "Replace last tile",
-        }
-    }
-}
-
-/// Image preview request - sent when user clicks a file in tree view
-#[derive(Clone, Debug)]
-pub struct ImagePreviewRequest {
-    pub path: PathBuf,
-    pub is_output: bool,
-}
-
 /// Shared application state
 pub struct AppState {
     /// Cached input paths (refreshed from disk)
@@ -58,10 +32,6 @@ pub struct AppState {
     pub logs_visible: bool,
     /// Whether the about window is open
     pub about_open: bool,
-    /// Click behavior for tree views
-    pub click_behavior: ClickBehavior,
-    /// Pending image preview request
-    pub preview_request: Option<ImagePreviewRequest>,
     /// Currently previewed input image path
     pub input_preview_path: Option<PathBuf>,
     /// Currently previewed output image path
@@ -84,14 +54,13 @@ impl Default for AppState {
             max_name_length: MAX_NAME_LENGTH.load(Ordering::SeqCst),
             logs_visible: false,
             about_open: false,
-            click_behavior: ClickBehavior::default(),
-            preview_request: None,
             input_preview_path: None,
             output_preview_path: None,
             initialized: false,
         }
     }
 }
+
 
 impl AppState {
     /// Reload all data from disk

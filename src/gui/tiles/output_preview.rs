@@ -26,6 +26,7 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         ui.label("too long");
     });
 
+    ui.label("Click an image to preview the output:");
     ui.separator();
 
     let grouped = group_files_with_renames(
@@ -40,7 +41,16 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         .auto_shrink([false, false])
         .show(ui, |ui| {
             for (input_path, files_info) in &grouped {
-                show_rename_group(ui, input_path, files_info, state.max_name_length);
+                let result = show_rename_group(
+                    ui,
+                    input_path,
+                    files_info,
+                    state.max_name_length,
+                    state.output_preview_path.as_ref(),
+                );
+                if let Some(clicked) = result.clicked_path {
+                    state.output_preview_path = Some(clicked);
+                }
             }
         });
 }

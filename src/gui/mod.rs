@@ -46,7 +46,10 @@ struct CmApp {
 }
 
 impl CmApp {
-    fn new(_cc: &eframe::CreationContext) -> Self {
+    fn new(cc: &eframe::CreationContext) -> Self {
+        // Install image loaders for egui
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+
         let tree = create_default_tree();
         let state = AppState::default();
 

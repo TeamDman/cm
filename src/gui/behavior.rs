@@ -98,18 +98,23 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     let rename_rules_id = tiles.insert_pane(CmPane::RenameRules);
     let max_name_length_id = tiles.insert_pane(CmPane::MaxNameLength);
     let output_preview_id = tiles.insert_pane(CmPane::OutputPreview);
+    let input_image_preview_id = tiles.insert_pane(CmPane::InputImagePreview);
+    let output_image_preview_id = tiles.insert_pane(CmPane::OutputImagePreview);
 
     // Left column: Input Paths + Input Images (vertical)
     let left_column = tiles.insert_vertical_tile(vec![input_paths_id, input_images_id]);
 
-    // Middle column: Rename Rules + Max Name Length (vertical)
-    let middle_column = tiles.insert_vertical_tile(vec![rename_rules_id, max_name_length_id]);
+    // Middle-left column: Image previews as tabs
+    let previews_tabs = tiles.insert_tab_tile(vec![input_image_preview_id, output_image_preview_id]);
+
+    // Middle-right column: Rename Rules + Max Name Length (vertical)
+    let rules_column = tiles.insert_vertical_tile(vec![rename_rules_id, max_name_length_id]);
 
     // Right column: Output Preview
     let right_column = output_preview_id;
 
     // Main horizontal layout
-    let root = tiles.insert_horizontal_tile(vec![left_column, middle_column, right_column]);
+    let root = tiles.insert_horizontal_tile(vec![left_column, previews_tabs, rules_column, right_column]);
 
     egui_tiles::Tree::new("cm_tree", root, tiles)
 }

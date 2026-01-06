@@ -1,6 +1,6 @@
 //! Tree view helper functions for displaying file hierarchies
 
-use eframe::egui::{self, Color32};
+use eframe::egui::{self, Color32, Sense};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -9,48 +9,103 @@ use std::path::PathBuf;
 pub struct TreeNode {
     pub children: HashMap<String, TreeNode>,
     pub is_file: bool,
+    /// Full path to the file (only set for leaf nodes)
+    pub full_path: Option<PathBuf>,
 }
 
-/// Build a tree from relative paths
-pub fn build_path_tree(paths: &[PathBuf]) -> TreeNode {
+/// Build a tree from relative paths, storing full paths for files
+pub fn build_path_tree(paths: &[PathBuf], base_path: &std::path::Path) -> TreeNode {
     let mut root = TreeNode::default();
 
     for path in paths {
         let mut current = &mut root;
-        for component in path.components() {
+        let components: Vec<_> = path.components().collect();
+        let len = components.len();
+
+        for (idx, component) in components.into_iter().enumerate() {
             let name = component.as_os_str().to_string_lossy().to_string();
             current = current.children.entry(name).or_default();
+
+            // Mark leaf node with full path
+            if idx == len - 1 {
+                current.is_file = true;
+                current.full_path = Some(base_path.join(path));
+            }
         }
-        current.is_file = true;
     }
 
     root
 }
 
-/// Show tree children (skipping the root level)
-pub fn show_tree_children(ui: &mut egui::Ui, node: &TreeNode, depth: usize) {
+/// Result of showing a tree - contains the clicked file path if any
+#[derive(Default)]
+pub struct TreeResult {
+    pub clicked_path: Option<PathBuf>,
+}
+
+/// Show tree children (skipping the root level), returning any clicked file
+pub fn show_tree_children(
+    ui: &mut egui::Ui,
+    node: &TreeNode,
+    depth: usize,
+    selected_path: Option<&PathBuf>,
+) -> TreeResult {
+    let mut result = TreeResult::default();
     let mut sorted_children: Vec<_> = node.children.iter().collect();
     sorted_children.sort_by_key(|(k, _)| *k);
 
     for (child_name, child_node) in sorted_children {
-        show_tree_node(ui, child_name, child_node, depth, None);
+        let child_result = show_tree_node(ui, child_name, child_node, depth, None, selected_path);
+        if child_result.clicked_path.is_some() {
+            result = child_result;
+        }
     }
+
+    result
 }
 
-/// Show a single tree node
+/// Show a single tree node, returning any clicked file path
 pub fn show_tree_node(
     ui: &mut egui::Ui,
     name: &str,
     node: &TreeNode,
     depth: usize,
     file_color: Option<Color32>,
-) {
+    selected_path: Option<&PathBuf>,
+) -> TreeResult {
+    let mut result = TreeResult::default();
+
     if node.children.is_empty() {
-        // Leaf node (file)
+        // Leaf node (file) - make it clickable
         ui.horizontal(|ui| {
             ui.add_space(depth as f32 * 16.0);
             let color = file_color.unwrap_or(Color32::LIGHT_GREEN);
-            ui.colored_label(color, format!("🖼 {name}"));
+            
+            // Check if this node is selected
+            let is_selected = node.full_path.as_ref().is_some_and(|p| Some(p) == selected_path);
+            
+            let label_text = format!("🖼 {name}");
+            let response = if is_selected {
+                // Highlighted when selected
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&label_text).color(color).underline())
+                        .sense(Sense::click()),
+                )
+            } else {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&label_text).color(color))
+                        .sense(Sense::click()),
+                )
+            };
+
+            if response.clicked() {
+                result.clicked_path = node.full_path.clone();
+            }
+
+            // Tooltip with full path
+            if let Some(ref path) = node.full_path {
+                response.on_hover_text(path.display().to_string());
+            }
         });
     } else {
         // Directory with children
@@ -61,10 +116,12 @@ pub fn show_tree_node(
             egui::CollapsingHeader::new(header_text)
                 .default_open(depth < 2)
                 .show(ui, |ui| {
-                    show_tree_children(ui, node, depth + 1);
+                    result = show_tree_children(ui, node, depth + 1, selected_path);
                 });
         });
     }
+
+    result
 }
 
 /// Group image files by which input directory they belong to.
@@ -95,7 +152,14 @@ pub fn group_files_by_input(
 }
 
 /// Show a group of files under an input directory
-pub fn show_input_group(ui: &mut egui::Ui, input_path: &std::path::Path, relative_files: &[PathBuf]) {
+pub fn show_input_group(
+    ui: &mut egui::Ui,
+    input_path: &std::path::Path,
+    relative_files: &[PathBuf],
+    selected_path: Option<&PathBuf>,
+) -> TreeResult {
+    let mut result = TreeResult::default();
+
     let display_name = input_path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
@@ -111,20 +175,20 @@ pub fn show_input_group(ui: &mut egui::Ui, input_path: &std::path::Path, relativ
     let header = egui::CollapsingHeader::new(header_text).default_open(true);
 
     let response = header.show(ui, |ui| {
-        let tree = build_path_tree(relative_files);
-        show_tree_children(ui, &tree, 0);
+        let tree = build_path_tree(relative_files, input_path);
+        result = show_tree_children(ui, &tree, 0, selected_path);
     });
 
     if !parent_path.is_empty() {
         response.header_response.on_hover_text(&parent_path);
     }
+
+    result
 }
 
 /// Info about a file and whether it was renamed / is too long
 #[derive(Clone)]
 pub struct FileRenameInfo {
-    /// The original relative path
-    pub original_path: PathBuf,
     /// The new (possibly renamed) relative path
     pub new_path: PathBuf,
     /// Whether the file was renamed (name differs from original)
@@ -146,17 +210,16 @@ pub fn group_files_with_renames(
         let mut files_info = Vec::new();
 
         for (original, renamed) in original_files.iter().zip(renamed_files.iter()) {
-            if let (Ok(orig_relative), Ok(new_relative)) = (
+            if let (Ok(_orig_relative), Ok(new_relative)) = (
                 original.strip_prefix(input_path),
                 renamed.strip_prefix(input_path),
             ) {
-                let orig_name = orig_relative.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                let orig_name = original.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let new_name = new_relative.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let was_renamed = orig_name != new_name;
                 let is_too_long = new_name.len() > max_name_length;
 
                 files_info.push(FileRenameInfo {
-                    original_path: orig_relative.to_path_buf(),
                     new_path: new_relative.to_path_buf(),
                     was_renamed,
                     is_too_long,
@@ -209,17 +272,36 @@ pub fn build_rename_tree(files: &[FileRenameInfo], input_path: &std::path::Path)
 }
 
 /// Show rename tree children
-pub fn show_rename_tree_children(ui: &mut egui::Ui, node: &RenameTreeNode, depth: usize) {
+pub fn show_rename_tree_children(
+    ui: &mut egui::Ui,
+    node: &RenameTreeNode,
+    depth: usize,
+    selected_path: Option<&PathBuf>,
+) -> TreeResult {
+    let mut result = TreeResult::default();
     let mut sorted_children: Vec<_> = node.children.iter().collect();
     sorted_children.sort_by_key(|(k, _)| *k);
 
     for (child_name, child_node) in sorted_children {
-        show_rename_tree_node(ui, child_name, child_node, depth);
+        let child_result = show_rename_tree_node(ui, child_name, child_node, depth, selected_path);
+        if child_result.clicked_path.is_some() {
+            result = child_result;
+        }
     }
+
+    result
 }
 
 /// Show a node in the rename tree
-pub fn show_rename_tree_node(ui: &mut egui::Ui, name: &str, node: &RenameTreeNode, depth: usize) {
+pub fn show_rename_tree_node(
+    ui: &mut egui::Ui,
+    name: &str,
+    node: &RenameTreeNode,
+    depth: usize,
+    selected_path: Option<&PathBuf>,
+) -> TreeResult {
+    let mut result = TreeResult::default();
+
     if node.children.is_empty() {
         // Leaf node (file) - red if too long, orange if renamed, green otherwise
         ui.horizontal(|ui| {
@@ -231,7 +313,31 @@ pub fn show_rename_tree_node(ui: &mut egui::Ui, name: &str, node: &RenameTreeNod
             } else {
                 Color32::LIGHT_GREEN
             };
-            ui.colored_label(color, format!("🖼 {name}"));
+
+            // Check if this node is selected
+            let is_selected = node.full_path.as_ref().is_some_and(|p| Some(p) == selected_path);
+
+            let label_text = format!("🖼 {name}");
+            let response = if is_selected {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&label_text).color(color).underline())
+                        .sense(Sense::click()),
+                )
+            } else {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&label_text).color(color))
+                        .sense(Sense::click()),
+                )
+            };
+
+            if response.clicked() {
+                result.clicked_path = node.full_path.clone();
+            }
+
+            // Tooltip with full path
+            if let Some(ref path) = node.full_path {
+                response.on_hover_text(path.display().to_string());
+            }
         });
     } else {
         // Directory with children
@@ -242,10 +348,12 @@ pub fn show_rename_tree_node(ui: &mut egui::Ui, name: &str, node: &RenameTreeNod
             egui::CollapsingHeader::new(header_text)
                 .default_open(depth < 2)
                 .show(ui, |ui| {
-                    show_rename_tree_children(ui, node, depth + 1);
+                    result = show_rename_tree_children(ui, node, depth + 1, selected_path);
                 });
         });
     }
+
+    result
 }
 
 /// Show a group of renamed files under an input directory
@@ -254,7 +362,10 @@ pub fn show_rename_group(
     input_path: &std::path::Path,
     files: &[FileRenameInfo],
     max_name_length: usize,
-) {
+    selected_path: Option<&PathBuf>,
+) -> TreeResult {
+    let mut result = TreeResult::default();
+
     let display_name = input_path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
@@ -285,10 +396,12 @@ pub fn show_rename_group(
 
     let response = header.show(ui, |ui| {
         let tree = build_rename_tree(files, input_path);
-        show_rename_tree_children(ui, &tree, 0);
+        result = show_rename_tree_children(ui, &tree, 0, selected_path);
     });
 
     if !parent_path.is_empty() {
         response.header_response.on_hover_text(&parent_path);
     }
+
+    result
 }
