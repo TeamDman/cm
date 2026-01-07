@@ -35,6 +35,8 @@ regex = "1.12.2"
 egui_tiles = "0.14.1"
 egui_extras = { version = "0.33.3", features = ["all_loaders"] }
 image = { version = "0.25.9", features = ["jpeg", "png", "webp"] }
+windows = "0.62.2"
+teamy-windows = "0.8.1"
 
 [dev-dependencies]
 # used by tests

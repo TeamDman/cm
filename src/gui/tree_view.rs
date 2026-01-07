@@ -1,8 +1,12 @@
 //! Tree view helper functions for displaying file hierarchies
 
 use eframe::egui::{self, Color32, Sense};
+#[cfg(windows)]
+use teamy_windows::shell::select::open_folder_and_select_items;
+use tracing::debug;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// A simple tree node for displaying paths hierarchically
 #[derive(Default)]
@@ -14,7 +18,7 @@ pub struct TreeNode {
 }
 
 /// Build a tree from relative paths, storing full paths for files
-pub fn build_path_tree(paths: &[PathBuf], base_path: &std::path::Path) -> TreeNode {
+pub fn build_path_tree(paths: &[PathBuf], base_path: &Path) -> TreeNode {
     let mut root = TreeNode::default();
 
     for path in paths {
@@ -104,7 +108,15 @@ pub fn show_tree_node(
 
             // Tooltip with full path
             if let Some(ref path) = node.full_path {
-                response.on_hover_text(path.display().to_string());
+                let response = response.on_hover_text(path.display().to_string());
+
+                // Context menu to open file in Explorer/Finder
+                response.context_menu(|ui| {
+                    if ui.button("Open in explorer").clicked() {
+                        open_in_explorer(path);
+                        ui.close();
+                    }
+                });
             }
         });
     } else {
@@ -122,6 +134,23 @@ pub fn show_tree_node(
     }
 
     result
+}
+
+/// Reveal `path` in the host file manager (Explorer/Finder/xdg-open).
+fn open_in_explorer(path: &Path) {
+    debug!("Opening in explorer: {}", path.display());
+
+    #[cfg(windows)]
+    {
+        // Pass the path as a single-element iterator. Passing `path` directly can
+        // cause the function to iterate the path's components (treating it like an
+        // iterator), which results in incorrect behavior (e.g., paths like `C:\`).
+        if let Err(e) = open_folder_and_select_items(&[path]) {
+            tracing::error!("Failed to open in explorer: {:?}", e);
+        }
+    }
+    #[cfg(not(windows))]
+    tracing::warn!("Not implemented for this platform - open in explorer");
 }
 
 /// Group image files by which input directory they belong to.
@@ -154,7 +183,7 @@ pub fn group_files_by_input(
 /// Show a group of files under an input directory
 pub fn show_input_group(
     ui: &mut egui::Ui,
-    input_path: &std::path::Path,
+    input_path: &Path,
     relative_files: &[PathBuf],
     selected_path: Option<&PathBuf>,
 ) -> TreeResult {
@@ -180,7 +209,13 @@ pub fn show_input_group(
     });
 
     if !parent_path.is_empty() {
-        response.header_response.on_hover_text(&parent_path);
+        let header_resp = response.header_response.on_hover_text(&parent_path);
+        header_resp.context_menu(|ui| {
+            if ui.button("Open in explorer").clicked() {
+                open_in_explorer(input_path);
+                ui.close();
+            }
+        });
     }
 
     result
@@ -252,7 +287,7 @@ pub struct RenameTreeNode {
 }
 
 /// Build a tree from files with rename info
-pub fn build_rename_tree(files: &[FileRenameInfo], input_path: &std::path::Path) -> RenameTreeNode {
+pub fn build_rename_tree(files: &[FileRenameInfo], input_path: &Path) -> RenameTreeNode {
     let mut root = RenameTreeNode::default();
 
     for file_info in files {
@@ -347,7 +382,27 @@ pub fn show_rename_tree_node(
                 if let Some(ref orig) = node.original_input_path {
                     tooltip.push_str(&format!("\nInput: {}", orig.display()));
                 }
-                response.on_hover_text(tooltip);
+                let response = response.on_hover_text(tooltip);
+
+                // Context menu to open the file in Explorer/Finder (prefer original input path)
+                if let Some(open_path) = node.original_input_path.as_ref().or_else(|| node.full_path.as_ref()) {
+                    response.context_menu(|ui| {
+                        if ui.button("Open in explorer").clicked() {
+                            open_in_explorer(open_path);
+                            ui.close();
+                        }
+                    });
+                }
+            } else {
+                // If only original_input_path is available (no full_path tooltip), allow context menu on the label
+                if let Some(open_path) = node.original_input_path.as_ref() {
+                    response.context_menu(|ui| {
+                        if ui.button("Open in explorer").clicked() {
+                            open_in_explorer(open_path);
+                            ui.close();
+                        }
+                    });
+                }
             }
         });
     } else {
@@ -371,7 +426,7 @@ pub fn show_rename_tree_node(
 #[allow(dead_code)]
 pub fn show_rename_group(
     ui: &mut egui::Ui,
-    input_path: &std::path::Path,
+    input_path: &Path,
     files: &[FileRenameInfo],
     max_name_length: usize,
     selected_path: Option<&PathBuf>,
@@ -382,8 +437,8 @@ pub fn show_rename_group(
 /// Show a group of renamed files with a custom output path display
 pub fn show_rename_group_with_output_path(
     ui: &mut egui::Ui,
-    _input_path: &std::path::Path,
-    output_path: &std::path::Path,
+    _input_path: &Path,
+    output_path: &Path,
     files: &[FileRenameInfo],
     max_name_length: usize,
     selected_path: Option<&PathBuf>,
@@ -424,7 +479,13 @@ pub fn show_rename_group_with_output_path(
     });
 
     if !parent_path.is_empty() {
-        response.header_response.on_hover_text(&parent_path);
+        let header_resp = response.header_response.on_hover_text(&parent_path);
+        header_resp.context_menu(|ui| {
+            if ui.button("Open in explorer").clicked() {
+                open_in_explorer(output_path);
+                ui.close();
+            }
+        });
     }
 
     result
