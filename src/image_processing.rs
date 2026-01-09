@@ -121,16 +121,16 @@ fn create_threshold_preview(
             let output_pixel = match mode {
                 BinarizationMode::KeepWhite => {
                     if is_background {
-                        Rgba([255, 255, 255, 255]) // White for background
+                        Rgba([0, 0, 0, 255]) // Black for background
                     } else {
-                        Rgba([0, 0, 0, 255]) // Black for content
+                        Rgba([255, 255, 255, 255]) // White for content
                     }
                 }
                 BinarizationMode::KeepBlack => {
                     if is_background {
-                        Rgba([0, 0, 0, 255]) // Black for background
+                        Rgba([255, 255, 255, 255]) // White for background
                     } else {
-                        Rgba([255, 255, 255, 255]) // White for content
+                        Rgba([0, 0, 0, 255]) // Black for content
                     }
                 }
             };
