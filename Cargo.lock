@@ -917,6 +917,7 @@ dependencies = [
  "directories-next",
  "dunce",
  "eframe",
+ "egui-toast",
  "egui_extras",
  "egui_tiles",
  "egui_tracing",
@@ -948,7 +949,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -1331,6 +1332,15 @@ dependencies = [
  "serde",
  "smallvec",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "egui-toast"
+version = "0.19.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d70ffb0cc3f04ee54e4ce7a202bbbe2bc10020fa9287d10812cda8c92b033f2"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

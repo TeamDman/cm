@@ -28,8 +28,6 @@ pub enum CmPane {
     ThresholdPreview,
     /// Output image preview  
     OutputImagePreview,
-    /// Logs viewer
-    Logs,
 }
 
 impl CmPane {
@@ -45,7 +43,6 @@ impl CmPane {
             CmPane::InputImagePreview => "Input Preview",
             CmPane::ThresholdPreview => "Threshold Preview",
             CmPane::OutputImagePreview => "Output Preview Image",
-            CmPane::Logs => "Logs",
         }
     }
 }
@@ -100,7 +97,6 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
                 self.output_texture_path,
                 self.output_pan_zoom,
             ),
-            CmPane::Logs => tiles::draw_logs_tile(ui),
         }
 
         // For now, no drag response

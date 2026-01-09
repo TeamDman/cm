@@ -18,11 +18,13 @@ use eframe::egui::Order;
 use eframe::egui::TextStyle;
 use eframe::egui::TextureHandle;
 use eframe::egui::{self};
+use egui_toast::{Toast, ToastKind, ToastOptions, Toasts};
 use eyre::eyre;
 use state::AppState;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::info;
+use tracing::Level;
 
 /// Run the GUI. This is async so the caller can create a runtime; the function will
 /// block in place on the eframe app using `tokio::task::block_in_place`.
@@ -63,6 +65,10 @@ struct CmApp {
     output_pan_zoom: tiles::PanZoomState,
     /// Texture handles for thumbnail previews in tree view
     thumbnail_textures: HashMap<PathBuf, TextureHandle>,
+    /// Toast notifications manager
+    toasts: Toasts,
+    /// Number of events we've already processed for toasts
+    last_seen_event_count: usize,
 }
 
 impl CmApp {
@@ -72,6 +78,9 @@ impl CmApp {
 
         let tree = create_default_tree();
         let state = AppState::default();
+
+        // Get current event count so we don't show toasts for old events
+        let initial_event_count = crate::tracing::event_collector().events().len();
 
         CmApp {
             tree,
@@ -84,6 +93,10 @@ impl CmApp {
             threshold_pan_zoom: tiles::PanZoomState::new(),
             output_pan_zoom: tiles::PanZoomState::new(),
             thumbnail_textures: HashMap::new(),
+            toasts: Toasts::new()
+                .anchor(Align2::RIGHT_BOTTOM, (-10.0, -10.0))
+                .direction(egui::Direction::BottomUp),
+            last_seen_event_count: initial_event_count,
         }
     }
 }
@@ -128,8 +141,6 @@ impl eframe::App for CmApp {
                     .clicked()
                 {
                     self.state.logs_visible = !self.state.logs_visible;
-                    // Toggle logs tile visibility in tree
-                    toggle_logs_tile(&mut self.tree, self.state.logs_visible);
                 }
 
                 // About button
@@ -209,6 +220,51 @@ impl eframe::App for CmApp {
                 });
         }
 
+        // Logs window (separate window instead of tile)
+        if self.state.logs_visible {
+            egui::Window::new("Logs")
+                .default_size([800.0, 400.0])
+                .open(&mut self.state.logs_visible)
+                .show(ctx, |ui| {
+                    tiles::draw_logs_tile(ui);
+                });
+        }
+
+        // Process new log events and create toasts for INFO and ERROR levels
+        let collector = crate::tracing::event_collector();
+        let events = collector.events();
+        let new_events = &events[self.last_seen_event_count..];
+        for event in new_events {
+            let kind = match event.level {
+                Level::INFO => Some(ToastKind::Info),
+                Level::ERROR => Some(ToastKind::Error),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                let message = event
+                    .fields
+                    .get("message")
+                    .map(|s| s.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                self.toasts.add(
+                    Toast::default()
+                        .kind(kind)
+                        .text(message)
+                        .options(
+                            ToastOptions::default()
+                                .duration_in_seconds(5.0)
+                                .show_progress(true)
+                                .show_icon(true),
+                        ),
+                );
+            }
+        }
+        self.last_seen_event_count = events.len();
+
+        // Show toasts
+        self.toasts.show(ctx);
+
         // Global hover preview for files being dragged over the app
         let hovered_files = ctx.input(|i| i.raw.hovered_files.clone());
         if !hovered_files.is_empty() {
@@ -261,32 +317,4 @@ impl eframe::App for CmApp {
     }
 }
 
-/// Toggle the logs tile visibility in the tree
-fn toggle_logs_tile(tree: &mut egui_tiles::Tree<CmPane>, visible: bool) {
-    // Find if we already have a logs tile
-    let logs_tile_id = tree.tiles.iter().find_map(|(id, tile)| {
-        if let egui_tiles::Tile::Pane(CmPane::Logs) = tile {
-            Some(*id)
-        } else {
-            None
-        }
-    });
 
-    if visible {
-        // Add logs tile if not present
-        if logs_tile_id.is_none() {
-            let logs_id = tree.tiles.insert_pane(CmPane::Logs);
-            // Add to root as a new horizontal tile
-            if let Some(root_id) = tree.root()
-                && let Some(egui_tiles::Tile::Container(container)) = tree.tiles.get_mut(root_id)
-            {
-                container.add_child(logs_id);
-            }
-        }
-    } else {
-        // Remove logs tile if present
-        if let Some(id) = logs_tile_id {
-            tree.tiles.remove(id);
-        }
-    }
-}
