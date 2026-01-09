@@ -21,6 +21,7 @@ pub use site_id::*;
 pub use max_name_length::*;
 pub use user_id::*;
 
+
 // Entrypoint matching the pattern in teamy-rust-cli
 pub fn main() -> eyre::Result<()> {
     color_eyre::install()?;

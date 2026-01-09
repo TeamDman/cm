@@ -1,6 +1,6 @@
 //! Input images tree tile - shows discovered image files
 
-use crate::gui::state::AppState;
+use crate::gui::state::{AppState, LoadingState};
 use crate::gui::tree_view::{group_files_by_input, show_input_group_with_cache, TreeRenderContext};
 use eframe::egui::{self, ScrollArea, TextureHandle};
 use std::collections::HashMap;
@@ -12,6 +12,20 @@ pub fn draw_input_images_tile(
     state: &mut AppState,
     thumbnail_textures: &mut HashMap<PathBuf, TextureHandle>,
 ) {
+    // Show loading state for directory discovery
+    if state.image_files_loading.is_loading() {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label("Discovering image files...");
+        });
+        return;
+    }
+    
+    if let LoadingState::Failed(ref error) = state.image_files_loading {
+        ui.colored_label(egui::Color32::RED, format!("Error: {}", error));
+        return;
+    }
+    
     if state.image_files.is_empty() {
         ui.label("(no image files found)");
         ui.add_space(8.0);
@@ -27,7 +41,7 @@ pub fn draw_input_images_tile(
     if loading_count > 0 {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label(format!("Loading images... ({}/{} cached)", cached_count, total_count));
+            ui.label(format!("Loading thumbnails... ({}/{} cached)", cached_count, total_count));
         });
     } else {
         ui.label(format!("Click an image to preview it ({} images):", total_count));

@@ -5,12 +5,11 @@ use crate::image_processing::{self, ProcessingSettings, get_output_path, Binariz
 use crate::inputs;
 use crate::rename_rules::RenameRule;
 use crate::MAX_NAME_LENGTH;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
-use tracing::{info, warn};
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tracing::{info, warn, error};
 
 /// Thumbnail size for cached previews
 pub const THUMBNAIL_SIZE: u32 = 128;
@@ -28,12 +27,32 @@ pub struct CachedImageInfo {
     pub thumbnail_data: Vec<u8>,
 }
 
+/// Loading state for async operations
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum LoadingState {
+    #[default]
+    NotStarted,
+    Loading,
+    Loaded,
+    Failed(String),
+}
+
+impl LoadingState {
+    pub fn is_loading(&self) -> bool {
+        matches!(self, LoadingState::Loading)
+    }
+}
+
 /// Shared application state
 pub struct AppState {
     /// Cached input paths (refreshed from disk)
     pub input_paths: Vec<PathBuf>,
+    /// Loading state for input paths
+    pub input_paths_loading: LoadingState,
     /// Cached image files (derived from inputs)
     pub image_files: Vec<PathBuf>,
+    /// Loading state for image file discovery
+    pub image_files_loading: LoadingState,
     /// Path to remove (deferred action)
     pub path_to_remove: Option<PathBuf>,
     /// Whether to clear all inputs (deferred action)
@@ -85,11 +104,11 @@ pub struct AppState {
     /// Cache of image metadata and thumbnails (path -> info)
     pub image_cache: HashMap<PathBuf, CachedImageInfo>,
     /// Set of paths currently being loaded in background
-    pub images_loading: std::collections::HashSet<PathBuf>,
+    pub images_loading: HashSet<PathBuf>,
     /// Sender for background tasks
-    background_sender: Sender<BackgroundMessage>,
+    pub background_sender: UnboundedSender<BackgroundMessage>,
     /// Receiver for background task results
-    background_receiver: Receiver<BackgroundMessage>,
+    background_receiver: UnboundedReceiver<BackgroundMessage>,
 }
 
 /// Info about a processed output image
@@ -110,7 +129,24 @@ pub struct OutputImageInfo {
 }
 
 /// Messages sent from background processing threads
+#[derive(Debug)]
 pub enum BackgroundMessage {
+    /// Input paths loaded
+    InputPathsReady {
+        paths: Vec<PathBuf>,
+    },
+    /// Input paths loading failed
+    InputPathsError {
+        error: String,
+    },
+    /// Image files discovered
+    ImageFilesReady {
+        files: Vec<PathBuf>,
+    },
+    /// Image files discovery failed
+    ImageFilesError {
+        error: String,
+    },
     /// Output info for a selected image is ready
     OutputInfoReady {
         input_path: PathBuf,
@@ -146,10 +182,12 @@ pub enum BackgroundMessage {
 
 impl Default for AppState {
     fn default() -> Self {
-        let (background_sender, background_receiver) = mpsc::channel();
+        let (background_sender, background_receiver) = mpsc::unbounded_channel();
         Self {
             input_paths: Vec::new(),
+            input_paths_loading: LoadingState::NotStarted,
             image_files: Vec::new(),
+            image_files_loading: LoadingState::NotStarted,
             path_to_remove: None,
             clear_all: false,
             last_error: None,
@@ -175,7 +213,7 @@ impl Default for AppState {
             process_all_running: false,
             process_all_progress: None,
             image_cache: HashMap::new(),
-            images_loading: std::collections::HashSet::new(),
+            images_loading: HashSet::new(),
             background_sender,
             background_receiver,
         }
@@ -184,38 +222,12 @@ impl Default for AppState {
 
 
 impl AppState {
-    /// Reload all data from disk
+    /// Start async reload of all data - does NOT block!
     pub fn reload_data(&mut self) {
-        // Load input paths
-        match inputs::load_inputs(&APP_HOME) {
-            Ok(paths) => {
-                self.input_paths = paths;
-                self.last_error = None;
-            }
-            Err(e) => {
-                self.last_error = Some(format!("Failed to load inputs: {}", e));
-                self.input_paths.clear();
-            }
-        }
-
-        // Derive image files from inputs
-        match inputs::list_files(&APP_HOME) {
-            Ok(files) => {
-                self.image_files = files
-                    .into_iter()
-                    .filter(|p| is_image_file(p.as_path()))
-                    .collect();
-                self.image_files.sort();
-            }
-            Err(e) => {
-                if self.last_error.is_none() {
-                    self.last_error = Some(format!("Failed to list files: {}", e));
-                }
-                self.image_files.clear();
-            }
-        }
-
-        // Load rename rules
+        // Start loading input paths in background
+        self.start_load_input_paths();
+        
+        // Load rename rules (these are small, can stay sync for now)
         match crate::rename_rules::list_rules(&APP_HOME) {
             Ok(rules) => {
                 self.rename_rules = rules.into_iter().map(|(_, r)| r).collect();
@@ -233,34 +245,129 @@ impl AppState {
 
         // Invalidate rename preview cache
         self.rename_preview_key = 0;
+    }
+    
+    /// Start loading input paths in background
+    fn start_load_input_paths(&mut self) {
+        self.input_paths_loading = LoadingState::Loading;
+        let sender = self.background_sender.clone();
         
-        // Start background loading of image cache for new files
-        self.start_image_cache_loading();
+        tokio::spawn(async move {
+            // Use spawn_blocking for the file I/O
+            let result = tokio::task::spawn_blocking(|| {
+                inputs::load_inputs(&APP_HOME)
+            }).await;
+            
+            match result {
+                Ok(Ok(paths)) => {
+                    let _ = sender.send(BackgroundMessage::InputPathsReady { paths });
+                }
+                Ok(Err(e)) => {
+                    let _ = sender.send(BackgroundMessage::InputPathsError { 
+                        error: e.to_string() 
+                    });
+                }
+                Err(e) => {
+                    let _ = sender.send(BackgroundMessage::InputPathsError { 
+                        error: format!("Task panicked: {}", e) 
+                    });
+                }
+            }
+        });
+    }
+    
+    /// Start discovering image files in background
+    fn start_discover_image_files(&mut self) {
+        self.image_files_loading = LoadingState::Loading;
+        let sender = self.background_sender.clone();
+        
+        tokio::spawn(async move {
+            // Use spawn_blocking for the recursive directory walk
+            let result = tokio::task::spawn_blocking(|| {
+                inputs::list_files(&APP_HOME)
+            }).await;
+            
+            match result {
+                Ok(Ok(files)) => {
+                    // Filter to image files
+                    let image_files: Vec<PathBuf> = files
+                        .into_iter()
+                        .filter(|p| is_image_file(p.as_path()))
+                        .collect();
+                    let _ = sender.send(BackgroundMessage::ImageFilesReady { files: image_files });
+                }
+                Ok(Err(e)) => {
+                    let _ = sender.send(BackgroundMessage::ImageFilesError { 
+                        error: e.to_string() 
+                    });
+                }
+                Err(e) => {
+                    let _ = sender.send(BackgroundMessage::ImageFilesError { 
+                        error: format!("Task panicked: {}", e) 
+                    });
+                }
+            }
+        });
     }
     
     /// Start background loading for all images not yet in cache
+    /// Uses a single background task that processes images with limited concurrency
     pub fn start_image_cache_loading(&mut self) {
-        for path in &self.image_files {
-            if !self.image_cache.contains_key(path) && !self.images_loading.contains(path) {
-                self.images_loading.insert(path.clone());
-                let path = path.clone();
-                let sender = self.background_sender.clone();
+        // Collect paths that need loading
+        let paths_to_load: Vec<PathBuf> = self.image_files
+            .iter()
+            .filter(|p| !self.image_cache.contains_key(*p) && !self.images_loading.contains(*p))
+            .cloned()
+            .collect();
+        
+        if paths_to_load.is_empty() {
+            return;
+        }
+        
+        // Mark all as loading
+        for path in &paths_to_load {
+            self.images_loading.insert(path.clone());
+        }
+        
+        let sender = self.background_sender.clone();
+        
+        // Spawn a single task that processes images with concurrency limit
+        tokio::spawn(async move {
+            // Process images with limited concurrency (4 at a time)
+            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+            
+            let mut handles = Vec::new();
+            
+            for path in paths_to_load {
+                let sender = sender.clone();
+                let semaphore = semaphore.clone();
                 
-                thread::spawn(move || {
-                    match image_processing::load_image_metadata(&path, THUMBNAIL_SIZE) {
-                        Ok(info) => {
-                            let _ = sender.send(BackgroundMessage::ImageCacheReady {
-                                path,
-                                info,
-                            });
+                let handle = tokio::spawn(async move {
+                    let _permit = semaphore.acquire().await;
+                    
+                    let path_clone = path.clone();
+                    let result = tokio::task::spawn_blocking(move || {
+                        image_processing::load_image_metadata(&path_clone, THUMBNAIL_SIZE)
+                    }).await;
+                    
+                    match result {
+                        Ok(Ok(info)) => {
+                            let _ = sender.send(BackgroundMessage::ImageCacheReady { path, info });
                         }
-                        Err(_) => {
+                        _ => {
                             let _ = sender.send(BackgroundMessage::ImageCacheError { path });
                         }
                     }
                 });
+                
+                handles.push(handle);
             }
-        }
+            
+            // Wait for all to complete
+            for handle in handles {
+                let _ = handle.await;
+            }
+        });
     }
     
     /// Check if an image is still loading
@@ -278,30 +385,72 @@ impl AppState {
         // Handle clear all
         if self.clear_all {
             self.clear_all = false;
-            match inputs::clear_all(&APP_HOME) {
-                Ok(()) => {
-                    info!("Cleared all inputs");
-                    self.reload_data();
+            self.input_paths_loading = LoadingState::Loading;
+            let sender = self.background_sender.clone();
+            
+            tokio::spawn(async move {
+                let result = tokio::task::spawn_blocking(|| {
+                    inputs::clear_all(&APP_HOME)
+                }).await;
+                
+                match result {
+                    Ok(Ok(())) => {
+                        info!("Cleared all inputs");
+                        // Trigger reload by sending empty paths
+                        let _ = sender.send(BackgroundMessage::InputPathsReady { paths: Vec::new() });
+                    }
+                    Ok(Err(e)) => {
+                        let _ = sender.send(BackgroundMessage::InputPathsError { 
+                            error: format!("Failed to clear: {}", e) 
+                        });
+                    }
+                    Err(e) => {
+                        let _ = sender.send(BackgroundMessage::InputPathsError { 
+                            error: format!("Task panicked: {}", e) 
+                        });
+                    }
                 }
-                Err(e) => {
-                    self.last_error = Some(format!("Failed to clear: {}", e));
-                }
-            }
+            });
         }
 
         // Handle single path removal
         if let Some(path) = self.path_to_remove.take() {
-            match inputs::remove_path(&APP_HOME, &path) {
-                Ok(removed) => {
-                    if removed {
-                        info!("Removed input: {}", path.display());
+            self.input_paths_loading = LoadingState::Loading;
+            let sender = self.background_sender.clone();
+            
+            tokio::spawn(async move {
+                let path_clone = path.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    inputs::remove_path(&APP_HOME, &path_clone)
+                }).await;
+                
+                match result {
+                    Ok(Ok(removed)) => {
+                        if removed {
+                            info!("Removed input: {}", path.display());
+                        }
+                        // Trigger reload
+                        match tokio::task::spawn_blocking(|| inputs::load_inputs(&APP_HOME)).await {
+                            Ok(Ok(paths)) => {
+                                let _ = sender.send(BackgroundMessage::InputPathsReady { paths });
+                            }
+                            _ => {
+                                let _ = sender.send(BackgroundMessage::InputPathsReady { paths: Vec::new() });
+                            }
+                        }
                     }
-                    self.reload_data();
+                    Ok(Err(e)) => {
+                        let _ = sender.send(BackgroundMessage::InputPathsError { 
+                            error: format!("Failed to remove: {}", e) 
+                        });
+                    }
+                    Err(e) => {
+                        let _ = sender.send(BackgroundMessage::InputPathsError { 
+                            error: format!("Task panicked: {}", e) 
+                        });
+                    }
                 }
-                Err(e) => {
-                    self.last_error = Some(format!("Failed to remove: {}", e));
-                }
-            }
+            });
         }
     }
 
@@ -358,7 +507,7 @@ impl AppState {
         self.update_selected_output_info();
     }
 
-    /// Update the output info for the selected file (runs in background thread)
+    /// Update the output info for the selected file (runs in background)
     pub fn update_selected_output_info(&mut self) {
         let Some(ref input_path) = self.selected_input_file else {
             self.selected_output_info = None;
@@ -380,9 +529,14 @@ impl AppState {
         let input_path = input_path.clone();
         let sender = self.background_sender.clone();
         
-        thread::spawn(move || {
-            match image_processing::process_image(&input_path, &settings) {
-                Ok(processed) => {
+        tokio::spawn(async move {
+            let input_path_clone = input_path.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                image_processing::process_image(&input_path_clone, &settings)
+            }).await;
+            
+            match result {
+                Ok(Ok(processed)) => {
                     let info = OutputImageInfo {
                         estimated_size: processed.estimated_size,
                         original_width: processed.original_width,
@@ -399,17 +553,23 @@ impl AppState {
                         info,
                     });
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     let _ = sender.send(BackgroundMessage::OutputInfoError {
                         input_path,
                         error: e.to_string(),
+                    });
+                }
+                Err(e) => {
+                    let _ = sender.send(BackgroundMessage::OutputInfoError {
+                        input_path,
+                        error: format!("Task panicked: {}", e),
                     });
                 }
             }
         });
     }
 
-    /// Process all images according to current settings (runs in background thread)
+    /// Process all images according to current settings (runs in background)
     pub fn process_all(&mut self) {
         if self.process_all_running {
             warn!("Process all already running, ignoring request");
@@ -435,26 +595,37 @@ impl AppState {
         self.process_all_progress = Some((0, image_files.len()));
         self.processing_result = None;
         
-        thread::spawn(move || {
-            match image_processing::process_all_images(
-                &image_files,
-                &renamed_files,
-                &input_paths,
-                &settings,
-                None,
-            ) {
-                Ok(result) => {
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                image_processing::process_all_images(
+                    &image_files,
+                    &renamed_files,
+                    &input_paths,
+                    &settings,
+                    None,
+                )
+            }).await;
+            
+            match result {
+                Ok(Ok(result)) => {
                     let _ = sender.send(BackgroundMessage::ProcessAllComplete {
                         processed_count: result.processed_count,
                         error_count: result.error_count,
                         errors: result.errors,
                     });
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     let _ = sender.send(BackgroundMessage::ProcessAllComplete {
                         processed_count: 0,
                         error_count: 1,
                         errors: vec![e.to_string()],
+                    });
+                }
+                Err(e) => {
+                    let _ = sender.send(BackgroundMessage::ProcessAllComplete {
+                        processed_count: 0,
+                        error_count: 1,
+                        errors: vec![format!("Task panicked: {}", e)],
                     });
                 }
             }
@@ -466,6 +637,32 @@ impl AppState {
         // Process all pending messages
         while let Ok(msg) = self.background_receiver.try_recv() {
             match msg {
+                BackgroundMessage::InputPathsReady { paths } => {
+                    self.input_paths = paths;
+                    self.input_paths_loading = LoadingState::Loaded;
+                    self.last_error = None;
+                    // Now start discovering image files
+                    self.start_discover_image_files();
+                }
+                BackgroundMessage::InputPathsError { error } => {
+                    self.input_paths_loading = LoadingState::Failed(error.clone());
+                    self.last_error = Some(format!("Failed to load inputs: {}", error));
+                    self.input_paths.clear();
+                }
+                BackgroundMessage::ImageFilesReady { mut files } => {
+                    files.sort();
+                    self.image_files = files;
+                    self.image_files_loading = LoadingState::Loaded;
+                    // Now start loading image metadata in background
+                    self.start_image_cache_loading();
+                }
+                BackgroundMessage::ImageFilesError { error } => {
+                    self.image_files_loading = LoadingState::Failed(error.clone());
+                    if self.last_error.is_none() {
+                        self.last_error = Some(format!("Failed to list files: {}", error));
+                    }
+                    self.image_files.clear();
+                }
                 BackgroundMessage::OutputInfoReady { input_path, info } => {
                     // Only update if this is still the selected file
                     if self.selected_input_file.as_ref() == Some(&input_path) {
@@ -476,7 +673,7 @@ impl AppState {
                 BackgroundMessage::OutputInfoError { input_path, error } => {
                     if self.selected_input_file.as_ref() == Some(&input_path) {
                         self.output_info_loading = false;
-                        info!("Failed to process image {}: {}", input_path.display(), error);
+                        error!("Failed to process image {}: {}", input_path.display(), error);
                     }
                 }
                 BackgroundMessage::ProcessAllComplete { processed_count, error_count, errors } => {

@@ -20,6 +20,15 @@ pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
     });
 
     ui.separator();
+    
+    // Show loading state
+    if state.input_paths_loading.is_loading() {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label("Loading input paths...");
+        });
+        return;
+    }
 
     if state.input_paths.is_empty() {
         ui.label("(no inputs - drag folders onto the window)");
@@ -33,6 +42,11 @@ pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
         .show(ui, |ui| {
             for path in state.input_paths.iter() {
                 ui.horizontal(|ui| {
+                    // Show spinner if image files are still being discovered
+                    if state.image_files_loading.is_loading() {
+                        ui.spinner();
+                    }
+                    
                     // Remove button
                     if ui.small_button("✖").clicked() {
                         state.path_to_remove = Some(path.clone());

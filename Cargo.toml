@@ -37,6 +37,7 @@ egui_extras = { version = "0.33.3", features = ["all_loaders"] }
 image = { version = "0.25.9", features = ["jpeg", "png", "webp"] }
 windows = "0.62.2"
 teamy-windows = "0.8.1"
+# cloud_terrastodon = { version = "0.31.0", features = ["ui-egui"], default-features = false }
 
 [dev-dependencies]
 # used by tests
