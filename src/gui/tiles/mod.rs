@@ -7,6 +7,7 @@ mod input_paths;
 mod logs;
 mod max_name_length;
 mod output_preview;
+mod pan_zoom;
 mod rename_rules;
 mod threshold_preview;
 
@@ -17,5 +18,6 @@ pub use input_paths::*;
 pub use logs::*;
 pub use max_name_length::*;
 pub use output_preview::*;
+pub use pan_zoom::*;
 pub use rename_rules::*;
 pub use threshold_preview::*;

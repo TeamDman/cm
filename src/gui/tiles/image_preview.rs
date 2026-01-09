@@ -1,18 +1,24 @@
 //! Image preview tile - shows input or output image preview
 
 use crate::gui::state::AppState;
-use eframe::egui::{self, load::SizedTexture, ScrollArea, TextureHandle, TextureOptions, Vec2};
+use crate::gui::tiles::pan_zoom::{PanZoomState, draw_pan_zoom_image, draw_pan_zoom_image_uri};
+use eframe::egui::{self, TextureHandle, TextureOptions};
 use std::path::PathBuf;
 
 /// Draw an image preview tile for input images
-pub fn draw_input_image_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
+pub fn draw_input_image_preview_tile(
+    ui: &mut egui::Ui,
+    state: &mut AppState,
+    pan_zoom: &mut PanZoomState,
+) {
     let path = state.input_preview_path.clone();
-    let should_clear = draw_image_preview(ui, path.as_ref(), "input");
+    let should_clear = draw_image_preview_with_pan_zoom(ui, path.as_ref(), "input", pan_zoom);
     if should_clear {
         state.selected_input_file = None;
         state.input_preview_path = None;
         state.output_preview_path = None;
         state.selected_output_info = None;
+        pan_zoom.reset();
     }
 }
 
@@ -22,6 +28,7 @@ pub fn draw_output_image_preview_tile(
     state: &mut AppState,
     output_texture: &mut Option<TextureHandle>,
     output_texture_path: &mut Option<PathBuf>,
+    pan_zoom: &mut PanZoomState,
 ) {
     // Show output info header
     if let Some(ref output_info) = state.selected_output_info {
@@ -57,6 +64,7 @@ pub fn draw_output_image_preview_tile(
         state,
         output_texture,
         output_texture_path,
+        pan_zoom,
     );
     
     if should_clear {
@@ -66,6 +74,7 @@ pub fn draw_output_image_preview_tile(
         state.selected_output_info = None;
         *output_texture = None;
         *output_texture_path = None;
+        pan_zoom.reset();
     }
 }
 
@@ -75,6 +84,7 @@ fn draw_output_preview_with_texture(
     state: &AppState,
     texture: &mut Option<TextureHandle>,
     texture_path: &mut Option<PathBuf>,
+    pan_zoom: &mut PanZoomState,
 ) -> bool {
     let mut should_clear = false;
     
@@ -127,21 +137,13 @@ fn draw_output_preview_with_texture(
                             TextureOptions::default(),
                         ));
                         *texture_path = Some(input_path.clone());
+                        pan_zoom.reset(); // Reset pan/zoom when loading new image
                     }
                 }
                 
-                // Show the texture if we have it
+                // Show the texture with pan/zoom support
                 if let Some(tex) = texture {
-                    let available = ui.available_size();
-                    let tex_size = tex.size_vec2();
-                    
-                    // Scale to fit while maintaining aspect ratio (allow shrinking)
-                    let scale = (available.x / tex_size.x).min(available.y / tex_size.y);
-                    let display_size = Vec2::new(tex_size.x * scale, tex_size.y * scale);
-                    
-                    ui.centered_and_justified(|ui| {
-                        ui.image(SizedTexture::new(tex.id(), display_size));
-                    });
+                    draw_pan_zoom_image(ui, tex, pan_zoom, "output_preview");
                 }
             } else if state.output_info_loading {
                 // Show loading spinner
@@ -151,19 +153,9 @@ fn draw_output_preview_with_texture(
                     ui.label("Processing image...");
                 });
             } else {
-                // Fallback to showing original file
+                // Fallback to showing original file with pan/zoom
                 let uri = format!("file://{}", input_path.display());
-                ScrollArea::both()
-                    .id_salt("output_image_scroll_fallback")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        let available = ui.available_size();
-                        let image = egui::Image::new(&uri)
-                            .fit_to_exact_size(Vec2::new(available.x, available.y))
-                            .maintain_aspect_ratio(true)
-                            .shrink_to_fit();
-                        ui.add(image);
-                    });
+                draw_pan_zoom_image_uri(ui, &uri, pan_zoom, "output_preview_fallback");
             }
         }
         None => {
@@ -186,10 +178,11 @@ fn draw_output_preview_with_texture(
 }
 
 /// Returns true if the preview should be cleared
-fn draw_image_preview(
+fn draw_image_preview_with_pan_zoom(
     ui: &mut egui::Ui,
     path: Option<&PathBuf>,
     kind: &str,
+    pan_zoom: &mut PanZoomState,
 ) -> bool {
     let mut should_clear = false;
 
@@ -219,25 +212,16 @@ fn draw_image_preview(
                 return should_clear;
             }
 
-            // Display the image using egui's Image widget with file:// URI
+            // Display the image with pan/zoom support
             let uri = format!("file://{}", path.display());
-            
-            let available = ui.available_size();
-            
-            // Create the image widget - scale to fit available space
-            let image = egui::Image::new(&uri)
-                .max_size(available)
-                .fit_to_original_size(1.0)
-                .shrink_to_fit();
-            
-            ui.add(image);
+            draw_pan_zoom_image_uri(ui, &uri, pan_zoom, &format!("{}_preview", kind));
         }
         None => {
             ui.vertical_centered(|ui| {
                 ui.add_space(20.0);
                 ui.label(format!("Click an image in the {} tree to preview it here.", kind));
                 ui.add_space(10.0);
-                ui.label("Images will be displayed at their original resolution.");
+                ui.label("Scroll to zoom, drag to pan, double-click to reset.");
             });
         }
     }

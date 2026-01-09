@@ -1,7 +1,8 @@
 //! Threshold preview tile - shows binarized image with crop bounding box
 
 use crate::gui::state::AppState;
-use eframe::egui::{self, load::SizedTexture, TextureHandle, TextureOptions, Vec2};
+use crate::gui::tiles::pan_zoom::{PanZoomState, draw_pan_zoom_image};
+use eframe::egui::{self, TextureHandle, TextureOptions};
 use std::path::PathBuf;
 
 /// Draw the threshold preview tile
@@ -10,6 +11,7 @@ pub fn draw_threshold_preview_tile(
     state: &mut AppState,
     threshold_texture: &mut Option<TextureHandle>,
     threshold_texture_path: &mut Option<PathBuf>,
+    pan_zoom: &mut PanZoomState,
 ) {
     let mut should_clear = false;
     
@@ -57,21 +59,13 @@ pub fn draw_threshold_preview_tile(
                             TextureOptions::default(),
                         ));
                         *threshold_texture_path = Some(input_path.clone());
+                        pan_zoom.reset(); // Reset pan/zoom when loading new image
                     }
                 }
                 
-                // Show the texture if we have it
+                // Show the texture with pan/zoom support
                 if let Some(tex) = threshold_texture {
-                    let available = ui.available_size();
-                    let tex_size = tex.size_vec2();
-                    
-                    // Scale to fit while maintaining aspect ratio (allow shrinking)
-                    let scale = (available.x / tex_size.x).min(available.y / tex_size.y);
-                    let display_size = Vec2::new(tex_size.x * scale, tex_size.y * scale);
-                    
-                    ui.centered_and_justified(|ui| {
-                        ui.image(SizedTexture::new(tex.id(), display_size));
-                    });
+                    draw_pan_zoom_image(ui, tex, pan_zoom, "threshold_preview");
                 } else {
                     ui.vertical_centered(|ui| {
                         ui.add_space(20.0);
@@ -103,7 +97,7 @@ pub fn draw_threshold_preview_tile(
                 ui.add_space(20.0);
                 ui.label("Click an image to see threshold preview.");
                 ui.add_space(10.0);
-                ui.label("The red box shows the crop bounds.");
+                ui.label("Scroll to zoom, drag to pan, double-click to reset.");
             });
         }
     }
@@ -115,5 +109,6 @@ pub fn draw_threshold_preview_tile(
         state.selected_output_info = None;
         *threshold_texture = None;
         *threshold_texture_path = None;
+        pan_zoom.reset();
     }
 }

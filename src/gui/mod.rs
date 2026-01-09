@@ -53,6 +53,12 @@ struct CmApp {
     threshold_texture: Option<TextureHandle>,
     /// Path of the image currently loaded in threshold_texture
     threshold_texture_path: Option<PathBuf>,
+    /// Pan/zoom state for input preview
+    input_pan_zoom: tiles::PanZoomState,
+    /// Pan/zoom state for threshold preview
+    threshold_pan_zoom: tiles::PanZoomState,
+    /// Pan/zoom state for output preview
+    output_pan_zoom: tiles::PanZoomState,
 }
 
 impl CmApp {
@@ -70,6 +76,9 @@ impl CmApp {
             output_texture_path: None,
             threshold_texture: None,
             threshold_texture_path: None,
+            input_pan_zoom: tiles::PanZoomState::new(),
+            threshold_pan_zoom: tiles::PanZoomState::new(),
+            output_pan_zoom: tiles::PanZoomState::new(),
         }
     }
 }
@@ -143,6 +152,9 @@ impl eframe::App for CmApp {
                 output_texture_path: &mut self.output_texture_path,
                 threshold_texture: &mut self.threshold_texture,
                 threshold_texture_path: &mut self.threshold_texture_path,
+                input_pan_zoom: &mut self.input_pan_zoom,
+                threshold_pan_zoom: &mut self.threshold_pan_zoom,
+                output_pan_zoom: &mut self.output_pan_zoom,
             };
             self.tree.ui(&mut behavior, ui);
         });

@@ -55,6 +55,9 @@ pub struct CmBehavior<'a> {
     pub output_texture_path: &'a mut Option<PathBuf>,
     pub threshold_texture: &'a mut Option<TextureHandle>,
     pub threshold_texture_path: &'a mut Option<PathBuf>,
+    pub input_pan_zoom: &'a mut tiles::PanZoomState,
+    pub threshold_pan_zoom: &'a mut tiles::PanZoomState,
+    pub output_pan_zoom: &'a mut tiles::PanZoomState,
 }
 
 impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
@@ -75,18 +78,24 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
             CmPane::RenameRules => tiles::draw_rename_rules_tile(ui, self.state),
             CmPane::MaxNameLength => tiles::draw_max_name_length_tile(ui, self.state),
             CmPane::OutputPreview => tiles::draw_output_preview_tile(ui, self.state),
-            CmPane::InputImagePreview => tiles::draw_input_image_preview_tile(ui, self.state),
+            CmPane::InputImagePreview => tiles::draw_input_image_preview_tile(
+                ui,
+                self.state,
+                self.input_pan_zoom,
+            ),
             CmPane::ThresholdPreview => tiles::draw_threshold_preview_tile(
                 ui,
                 self.state,
                 self.threshold_texture,
                 self.threshold_texture_path,
+                self.threshold_pan_zoom,
             ),
             CmPane::OutputImagePreview => tiles::draw_output_image_preview_tile(
                 ui,
                 self.state,
                 self.output_texture,
                 self.output_texture_path,
+                self.output_pan_zoom,
             ),
             CmPane::Logs => tiles::draw_logs_tile(ui),
         }
