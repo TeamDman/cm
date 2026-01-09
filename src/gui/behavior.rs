@@ -3,6 +3,7 @@
 use crate::gui::state::AppState;
 use crate::gui::tiles;
 use eframe::egui::{self, TextureHandle};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// The different types of panes in our application
@@ -58,6 +59,7 @@ pub struct CmBehavior<'a> {
     pub input_pan_zoom: &'a mut tiles::PanZoomState,
     pub threshold_pan_zoom: &'a mut tiles::PanZoomState,
     pub output_pan_zoom: &'a mut tiles::PanZoomState,
+    pub thumbnail_textures: &'a mut HashMap<PathBuf, TextureHandle>,
 }
 
 impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
@@ -73,7 +75,7 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
     ) -> egui_tiles::UiResponse {
         match pane {
             CmPane::InputPaths => tiles::draw_input_paths_tile(ui, self.state),
-            CmPane::InputImages => tiles::draw_input_images_tile(ui, self.state),
+            CmPane::InputImages => tiles::draw_input_images_tile(ui, self.state, self.thumbnail_textures),
             CmPane::ImageManipulation => tiles::draw_image_manipulation_tile(ui, self.state),
             CmPane::RenameRules => tiles::draw_rename_rules_tile(ui, self.state),
             CmPane::MaxNameLength => tiles::draw_max_name_length_tile(ui, self.state),

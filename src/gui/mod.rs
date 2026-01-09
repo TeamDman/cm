@@ -1,9 +1,9 @@
 //! CM GUI using egui_tiles for layout management
 
 mod behavior;
-mod state;
+pub mod state;
 mod tiles;
-mod tree_view;
+pub mod tree_view;
 
 use behavior::{CmBehavior, CmPane, create_default_tree};
 use state::AppState;
@@ -19,6 +19,7 @@ use eframe::egui::TextStyle;
 use eframe::egui::TextureHandle;
 use eframe::egui::{self};
 use eyre::eyre;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::info;
 
@@ -59,6 +60,8 @@ struct CmApp {
     threshold_pan_zoom: tiles::PanZoomState,
     /// Pan/zoom state for output preview
     output_pan_zoom: tiles::PanZoomState,
+    /// Texture handles for thumbnail previews in tree view
+    thumbnail_textures: HashMap<PathBuf, TextureHandle>,
 }
 
 impl CmApp {
@@ -79,6 +82,7 @@ impl CmApp {
             input_pan_zoom: tiles::PanZoomState::new(),
             threshold_pan_zoom: tiles::PanZoomState::new(),
             output_pan_zoom: tiles::PanZoomState::new(),
+            thumbnail_textures: HashMap::new(),
         }
     }
 }
@@ -155,6 +159,7 @@ impl eframe::App for CmApp {
                 input_pan_zoom: &mut self.input_pan_zoom,
                 threshold_pan_zoom: &mut self.threshold_pan_zoom,
                 output_pan_zoom: &mut self.output_pan_zoom,
+                thumbnail_textures: &mut self.thumbnail_textures,
             };
             self.tree.ui(&mut behavior, ui);
         });

@@ -1,12 +1,12 @@
 //! Tree view helper functions for displaying file hierarchies
 
-use eframe::egui::{self, Color32, Sense};
+use crate::gui::state::CachedImageInfo;
+use eframe::egui::{self, Color32, Sense, TextureHandle, TextureOptions};
 #[cfg(windows)]
 use teamy_windows::shell::select::open_folder_and_select_items;
 use tracing::debug;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// A simple tree node for displaying paths hierarchically
 #[derive(Default)]
@@ -15,6 +15,13 @@ pub struct TreeNode {
     pub is_file: bool,
     /// Full path to the file (only set for leaf nodes)
     pub full_path: Option<PathBuf>,
+}
+
+/// Context for rendering tree nodes with image cache
+pub struct TreeRenderContext<'a> {
+    pub image_cache: &'a HashMap<PathBuf, CachedImageInfo>,
+    pub images_loading: &'a HashSet<PathBuf>,
+    pub thumbnail_textures: &'a mut HashMap<PathBuf, TextureHandle>,
 }
 
 /// Build a tree from relative paths, storing full paths for files
@@ -54,14 +61,35 @@ pub fn show_tree_children(
     depth: usize,
     selected_path: Option<&PathBuf>,
 ) -> TreeResult {
+    show_tree_children_with_cache(ui, node, depth, selected_path, None)
+}
+
+/// Show tree children with optional image cache context
+pub fn show_tree_children_with_cache(
+    ui: &mut egui::Ui,
+    node: &TreeNode,
+    depth: usize,
+    selected_path: Option<&PathBuf>,
+    ctx: Option<&mut TreeRenderContext<'_>>,
+) -> TreeResult {
     let mut result = TreeResult::default();
     let mut sorted_children: Vec<_> = node.children.iter().collect();
     sorted_children.sort_by_key(|(k, _)| *k);
 
-    for (child_name, child_node) in sorted_children {
-        let child_result = show_tree_node(ui, child_name, child_node, depth, None, selected_path);
-        if child_result.clicked_path.is_some() {
-            result = child_result;
+    // We need to handle ctx mutability carefully
+    if let Some(ctx) = ctx {
+        for (child_name, child_node) in sorted_children {
+            let child_result = show_tree_node_with_cache(ui, child_name, child_node, depth, None, selected_path, Some(ctx));
+            if child_result.clicked_path.is_some() {
+                result = child_result;
+            }
+        }
+    } else {
+        for (child_name, child_node) in sorted_children {
+            let child_result = show_tree_node_with_cache(ui, child_name, child_node, depth, None, selected_path, None);
+            if child_result.clicked_path.is_some() {
+                result = child_result;
+            }
         }
     }
 
@@ -77,6 +105,19 @@ pub fn show_tree_node(
     file_color: Option<Color32>,
     selected_path: Option<&PathBuf>,
 ) -> TreeResult {
+    show_tree_node_with_cache(ui, name, node, depth, file_color, selected_path, None)
+}
+
+/// Show a single tree node with optional image cache, returning any clicked file path
+pub fn show_tree_node_with_cache(
+    ui: &mut egui::Ui,
+    name: &str,
+    node: &TreeNode,
+    depth: usize,
+    file_color: Option<Color32>,
+    selected_path: Option<&PathBuf>,
+    ctx: Option<&mut TreeRenderContext<'_>>,
+) -> TreeResult {
     let mut result = TreeResult::default();
 
     if node.children.is_empty() {
@@ -88,11 +129,35 @@ pub fn show_tree_node(
             // Check if this node is selected
             let is_selected = node.full_path.as_ref().is_some_and(|p| Some(p) == selected_path);
             
-            let label_text = format!("🖼 {name}");
+            // Build the label text with image info if available
+            let (label_text, is_loading, cached_info) = if let Some(ref path) = node.full_path {
+                if let Some(ref ctx) = ctx {
+                    if let Some(info) = ctx.image_cache.get(path) {
+                        // Show dimensions and size
+                        let size_str = format_size(info.file_size);
+                        let label = format!("🖼 {} ({} {}x{})", name, size_str, info.width, info.height);
+                        (label, false, Some(info.clone()))
+                    } else if ctx.images_loading.contains(path) {
+                        (format!("⏳ {}", name), true, None)
+                    } else {
+                        (format!("🖼 {}", name), false, None)
+                    }
+                } else {
+                    (format!("🖼 {}", name), false, None)
+                }
+            } else {
+                (format!("🖼 {}", name), false, None)
+            };
+            
             let response = if is_selected {
                 // Highlighted when selected
                 ui.add(
                     egui::Label::new(egui::RichText::new(&label_text).color(color).underline())
+                        .sense(Sense::click()),
+                )
+            } else if is_loading {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&label_text).color(Color32::GRAY))
                         .sense(Sense::click()),
                 )
             } else {
@@ -106,12 +171,55 @@ pub fn show_tree_node(
                 result.clicked_path = node.full_path.clone();
             }
 
-            // Tooltip with full path
+            // Tooltip with thumbnail and path
             if let Some(ref path) = node.full_path {
-                let response = response.on_hover_text(path.display().to_string());
+                let hover_response = if let Some(info) = cached_info {
+                    if let Some(ctx) = ctx {
+                        // Show image tooltip with thumbnail
+                        let texture = ctx.thumbnail_textures.entry(path.clone()).or_insert_with(|| {
+                            // Load thumbnail texture
+                            if let Ok(image) = image::load_from_memory(&info.thumbnail_data) {
+                                let size = [image.width() as _, image.height() as _];
+                                let rgba = image.to_rgba8();
+                                let pixels = rgba.as_flat_samples();
+                                let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                    size,
+                                    pixels.as_slice(),
+                                );
+                                ui.ctx().load_texture(
+                                    format!("thumb_{}", path.display()),
+                                    color_image,
+                                    TextureOptions::default(),
+                                )
+                            } else {
+                                // Fallback: 1x1 transparent texture
+                                ui.ctx().load_texture(
+                                    "thumb_fallback",
+                                    egui::ColorImage::new([1, 1], vec![Color32::TRANSPARENT]),
+                                    TextureOptions::default(),
+                                )
+                            }
+                        });
+                        
+                        response.on_hover_ui(|ui| {
+                            ui.vertical(|ui| {
+                                ui.image((texture.id(), texture.size_vec2()));
+                                ui.add_space(4.0);
+                                ui.label(format!("{}x{}", info.width, info.height));
+                                ui.label(format_size(info.file_size));
+                                ui.add_space(4.0);
+                                ui.label(egui::RichText::new(path.display().to_string()).small());
+                            });
+                        })
+                    } else {
+                        response.on_hover_text(path.display().to_string())
+                    }
+                } else {
+                    response.on_hover_text(path.display().to_string())
+                };
 
-                // Context menu to open file in Explorer/Finder
-                response.context_menu(|ui| {
+                // Context menu to open file in Explorer/Finder (always available)
+                hover_response.context_menu(|ui| {
                     if ui.button("Open in explorer").clicked() {
                         open_in_explorer(path);
                         ui.close();
@@ -128,12 +236,26 @@ pub fn show_tree_node(
             egui::CollapsingHeader::new(header_text)
                 .default_open(depth < 2)
                 .show(ui, |ui| {
-                    result = show_tree_children(ui, node, depth + 1, selected_path);
+                    result = show_tree_children_with_cache(ui, node, depth + 1, selected_path, ctx);
                 });
         });
     }
 
     result
+}
+
+/// Format file size in human-readable form
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+
+    if bytes >= MB {
+        format!("{:.1}MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.0}KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{}B", bytes)
+    }
 }
 
 /// Reveal `path` in the host file manager (Explorer/Finder/xdg-open).
@@ -187,6 +309,17 @@ pub fn show_input_group(
     relative_files: &[PathBuf],
     selected_path: Option<&PathBuf>,
 ) -> TreeResult {
+    show_input_group_with_cache(ui, input_path, relative_files, selected_path, None)
+}
+
+/// Show a group of files under an input directory with optional image cache
+pub fn show_input_group_with_cache(
+    ui: &mut egui::Ui,
+    input_path: &Path,
+    relative_files: &[PathBuf],
+    selected_path: Option<&PathBuf>,
+    ctx: Option<&mut TreeRenderContext<'_>>,
+) -> TreeResult {
     let mut result = TreeResult::default();
 
     let display_name = input_path
@@ -205,7 +338,7 @@ pub fn show_input_group(
 
     let response = header.show(ui, |ui| {
         let tree = build_path_tree(relative_files, input_path);
-        result = show_tree_children(ui, &tree, 0, selected_path);
+        result = show_tree_children_with_cache(ui, &tree, 0, selected_path, ctx);
     });
 
     if !parent_path.is_empty() {

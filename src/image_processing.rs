@@ -1,5 +1,6 @@
 //! Image processing utilities for the CM application
 
+use crate::gui::state::CachedImageInfo;
 use eyre::{Result, eyre};
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use std::io::Cursor;
@@ -318,7 +319,9 @@ fn is_background_pixel_with_threshold(
     distance < threshold as f64
 }
 
-/// Find content bounds using threshold
+/// Find content bounds using threshold - optimized edge-inward scanning
+/// Instead of scanning every pixel, we scan from each edge inward until we find content.
+/// This is much faster for images where content is roughly centered with padding.
 fn find_content_bounds(
     img: &RgbaImage,
     background: &Rgba<u8>,
@@ -326,30 +329,66 @@ fn find_content_bounds(
 ) -> Option<(u32, u32, u32, u32)> {
     let (width, height) = img.dimensions();
     
-    let mut min_x = width;
-    let mut min_y = height;
-    let mut max_x = 0u32;
-    let mut max_y = 0u32;
-    let mut found_content = false;
+    if width == 0 || height == 0 {
+        return None;
+    }
     
-    for y in 0..height {
+    // Find min_y: scan from top down until we find a row with content
+    let mut min_y = 0u32;
+    'top: for y in 0..height {
         for x in 0..width {
             let pixel = img.get_pixel(x, y);
             if !is_background_pixel_with_threshold(pixel, background, threshold) {
-                min_x = min_x.min(x);
-                min_y = min_y.min(y);
-                max_x = max_x.max(x);
-                max_y = max_y.max(y);
-                found_content = true;
+                min_y = y;
+                break 'top;
+            }
+        }
+        min_y = y + 1;
+    }
+    
+    // If we scanned all rows and found nothing, no content
+    if min_y >= height {
+        return None;
+    }
+    
+    // Find max_y: scan from bottom up until we find a row with content
+    let mut max_y = height - 1;
+    'bottom: for y in (min_y..height).rev() {
+        for x in 0..width {
+            let pixel = img.get_pixel(x, y);
+            if !is_background_pixel_with_threshold(pixel, background, threshold) {
+                max_y = y;
+                break 'bottom;
             }
         }
     }
     
-    if found_content {
-        Some((min_x, min_y, max_x, max_y))
-    } else {
-        None
+    // Find min_x: scan from left to right, but only in the y range we know has content
+    let mut min_x = 0u32;
+    'left: for x in 0..width {
+        for y in min_y..=max_y {
+            let pixel = img.get_pixel(x, y);
+            if !is_background_pixel_with_threshold(pixel, background, threshold) {
+                min_x = x;
+                break 'left;
+            }
+        }
+        min_x = x + 1;
     }
+    
+    // Find max_x: scan from right to left, but only in the y range we know has content
+    let mut max_x = width - 1;
+    'right: for x in (min_x..width).rev() {
+        for y in min_y..=max_y {
+            let pixel = img.get_pixel(x, y);
+            if !is_background_pixel_with_threshold(pixel, background, threshold) {
+                max_x = x;
+                break 'right;
+            }
+        }
+    }
+    
+    Some((min_x, min_y, max_x, max_y))
 }
 
 /// Draw a red bounding box on an image
@@ -589,4 +628,42 @@ pub struct ProcessAllResult {
     pub skipped_count: usize,
     pub error_count: usize,
     pub errors: Vec<String>,
+}
+
+/// Load image metadata and generate a thumbnail for caching
+pub fn load_image_metadata(path: &Path, thumbnail_size: u32) -> Result<CachedImageInfo> {
+    // Get file size
+    let file_size = std::fs::metadata(path)
+        .map_err(|e| eyre!("Failed to get file metadata: {}", e))?
+        .len();
+    
+    // Load the image
+    let img = image::open(path)
+        .map_err(|e| eyre!("Failed to open image {}: {}", path.display(), e))?;
+    
+    let width = img.width();
+    let height = img.height();
+    
+    // Generate thumbnail
+    let thumbnail = if width <= thumbnail_size && height <= thumbnail_size {
+        img
+    } else {
+        let scale = (thumbnail_size as f64 / width.max(height) as f64).min(1.0);
+        let new_width = (width as f64 * scale) as u32;
+        let new_height = (height as f64 * scale) as u32;
+        img.resize(new_width, new_height, image::imageops::FilterType::Triangle)
+    };
+    
+    // Encode thumbnail as PNG
+    let mut thumbnail_data = Vec::new();
+    let mut cursor = Cursor::new(&mut thumbnail_data);
+    thumbnail.write_to(&mut cursor, ImageFormat::Png)
+        .map_err(|e| eyre!("Failed to encode thumbnail: {}", e))?;
+    
+    Ok(CachedImageInfo {
+        width,
+        height,
+        file_size,
+        thumbnail_data,
+    })
 }

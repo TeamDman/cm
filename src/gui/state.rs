@@ -5,11 +5,28 @@ use crate::image_processing::{self, ProcessingSettings, get_output_path, Binariz
 use crate::inputs;
 use crate::rename_rules::RenameRule;
 use crate::MAX_NAME_LENGTH;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use tracing::{info, warn};
+
+/// Thumbnail size for cached previews
+pub const THUMBNAIL_SIZE: u32 = 128;
+
+/// Cached image metadata and thumbnail
+#[derive(Clone, Debug)]
+pub struct CachedImageInfo {
+    /// Image width
+    pub width: u32,
+    /// Image height  
+    pub height: u32,
+    /// File size in bytes
+    pub file_size: u64,
+    /// Thumbnail PNG data (small, for tooltips)
+    pub thumbnail_data: Vec<u8>,
+}
 
 /// Shared application state
 pub struct AppState {
@@ -65,6 +82,10 @@ pub struct AppState {
     pub process_all_running: bool,
     /// Progress for process_all (current, total)
     pub process_all_progress: Option<(usize, usize)>,
+    /// Cache of image metadata and thumbnails (path -> info)
+    pub image_cache: HashMap<PathBuf, CachedImageInfo>,
+    /// Set of paths currently being loaded in background
+    pub images_loading: std::collections::HashSet<PathBuf>,
     /// Sender for background tasks
     background_sender: Sender<BackgroundMessage>,
     /// Receiver for background task results
@@ -112,6 +133,15 @@ pub enum BackgroundMessage {
         total: usize,
         current_file: PathBuf,
     },
+    /// Image cache entry loaded
+    ImageCacheReady {
+        path: PathBuf,
+        info: CachedImageInfo,
+    },
+    /// Image cache loading failed
+    ImageCacheError {
+        path: PathBuf,
+    },
 }
 
 impl Default for AppState {
@@ -144,6 +174,8 @@ impl Default for AppState {
             output_info_loading: false,
             process_all_running: false,
             process_all_progress: None,
+            image_cache: HashMap::new(),
+            images_loading: std::collections::HashSet::new(),
             background_sender,
             background_receiver,
         }
@@ -201,6 +233,44 @@ impl AppState {
 
         // Invalidate rename preview cache
         self.rename_preview_key = 0;
+        
+        // Start background loading of image cache for new files
+        self.start_image_cache_loading();
+    }
+    
+    /// Start background loading for all images not yet in cache
+    pub fn start_image_cache_loading(&mut self) {
+        for path in &self.image_files {
+            if !self.image_cache.contains_key(path) && !self.images_loading.contains(path) {
+                self.images_loading.insert(path.clone());
+                let path = path.clone();
+                let sender = self.background_sender.clone();
+                
+                thread::spawn(move || {
+                    match image_processing::load_image_metadata(&path, THUMBNAIL_SIZE) {
+                        Ok(info) => {
+                            let _ = sender.send(BackgroundMessage::ImageCacheReady {
+                                path,
+                                info,
+                            });
+                        }
+                        Err(_) => {
+                            let _ = sender.send(BackgroundMessage::ImageCacheError { path });
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    /// Check if an image is still loading
+    pub fn is_image_loading(&self, path: &PathBuf) -> bool {
+        self.images_loading.contains(path)
+    }
+    
+    /// Get cached image info if available
+    pub fn get_cached_image(&self, path: &PathBuf) -> Option<&CachedImageInfo> {
+        self.image_cache.get(path)
     }
 
     /// Handle deferred actions from previous frame
@@ -423,6 +493,13 @@ impl AppState {
                 }
                 BackgroundMessage::ProcessAllProgress { current, total, current_file: _ } => {
                     self.process_all_progress = Some((current, total));
+                }
+                BackgroundMessage::ImageCacheReady { path, info } => {
+                    self.images_loading.remove(&path);
+                    self.image_cache.insert(path, info);
+                }
+                BackgroundMessage::ImageCacheError { path } => {
+                    self.images_loading.remove(&path);
                 }
             }
         }
