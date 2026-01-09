@@ -8,6 +8,7 @@ mod logs;
 mod max_name_length;
 mod output_preview;
 mod rename_rules;
+mod threshold_preview;
 
 pub use image_manipulation::*;
 pub use image_preview::*;
@@ -17,3 +18,4 @@ pub use logs::*;
 pub use max_name_length::*;
 pub use output_preview::*;
 pub use rename_rules::*;
+pub use threshold_preview::*;

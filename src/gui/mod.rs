@@ -49,6 +49,10 @@ struct CmApp {
     output_texture: Option<TextureHandle>,
     /// Path of the image currently loaded in output_texture
     output_texture_path: Option<PathBuf>,
+    /// Texture handle for threshold preview
+    threshold_texture: Option<TextureHandle>,
+    /// Path of the image currently loaded in threshold_texture
+    threshold_texture_path: Option<PathBuf>,
 }
 
 impl CmApp {
@@ -64,6 +68,8 @@ impl CmApp {
             state,
             output_texture: None,
             output_texture_path: None,
+            threshold_texture: None,
+            threshold_texture_path: None,
         }
     }
 }
@@ -127,6 +133,8 @@ impl eframe::App for CmApp {
                 state: &mut self.state,
                 output_texture: &mut self.output_texture,
                 output_texture_path: &mut self.output_texture_path,
+                threshold_texture: &mut self.threshold_texture,
+                threshold_texture_path: &mut self.threshold_texture_path,
             };
             self.tree.ui(&mut behavior, ui);
         });

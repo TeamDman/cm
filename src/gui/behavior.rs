@@ -22,6 +22,8 @@ pub enum CmPane {
     OutputPreview,
     /// Input image preview
     InputImagePreview,
+    /// Threshold preview (binarized)
+    ThresholdPreview,
     /// Output image preview  
     OutputImagePreview,
     /// Logs viewer
@@ -39,6 +41,7 @@ impl CmPane {
             CmPane::MaxNameLength => "Max Name Length",
             CmPane::OutputPreview => "Output Preview",
             CmPane::InputImagePreview => "Input Preview",
+            CmPane::ThresholdPreview => "Threshold Preview",
             CmPane::OutputImagePreview => "Output Preview Image",
             CmPane::Logs => "Logs",
         }
@@ -50,6 +53,8 @@ pub struct CmBehavior<'a> {
     pub state: &'a mut AppState,
     pub output_texture: &'a mut Option<TextureHandle>,
     pub output_texture_path: &'a mut Option<PathBuf>,
+    pub threshold_texture: &'a mut Option<TextureHandle>,
+    pub threshold_texture_path: &'a mut Option<PathBuf>,
 }
 
 impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
@@ -71,6 +76,12 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
             CmPane::MaxNameLength => tiles::draw_max_name_length_tile(ui, self.state),
             CmPane::OutputPreview => tiles::draw_output_preview_tile(ui, self.state),
             CmPane::InputImagePreview => tiles::draw_input_image_preview_tile(ui, self.state),
+            CmPane::ThresholdPreview => tiles::draw_threshold_preview_tile(
+                ui,
+                self.state,
+                self.threshold_texture,
+                self.threshold_texture_path,
+            ),
             CmPane::OutputImagePreview => tiles::draw_output_image_preview_tile(
                 ui,
                 self.state,
@@ -112,13 +123,14 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     let max_name_length_id = tiles.insert_pane(CmPane::MaxNameLength);
     let output_preview_id = tiles.insert_pane(CmPane::OutputPreview);
     let input_image_preview_id = tiles.insert_pane(CmPane::InputImagePreview);
+    let threshold_preview_id = tiles.insert_pane(CmPane::ThresholdPreview);
     let output_image_preview_id = tiles.insert_pane(CmPane::OutputImagePreview);
 
     // Left column: Input Paths + Input Images (vertical)
     let left_column = tiles.insert_vertical_tile(vec![input_paths_id, input_images_id]);
 
-    // Middle-left column: Image previews stacked vertically (input above output)
-    let previews_column = tiles.insert_vertical_tile(vec![input_image_preview_id, output_image_preview_id]);
+    // Middle-left column: Image previews stacked vertically (input, threshold, output)
+    let previews_column = tiles.insert_vertical_tile(vec![input_image_preview_id, threshold_preview_id, output_image_preview_id]);
 
     // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length)
     let settings_column = tiles.insert_vertical_tile(vec![image_manipulation_id, rename_rules_id, max_name_length_id]);

@@ -1,7 +1,7 @@
 //! Shared application state for the CM GUI
 
 use crate::app_home::APP_HOME;
-use crate::image_processing::{self, ProcessingSettings, get_output_path};
+use crate::image_processing::{self, ProcessingSettings, get_output_path, BinarizationMode};
 use crate::inputs;
 use crate::rename_rules::RenameRule;
 use crate::MAX_NAME_LENGTH;
@@ -45,6 +45,10 @@ pub struct AppState {
     pub initialized: bool,
     /// Image manipulation: crop images to content
     pub crop_to_content: bool,
+    /// Threshold value for crop detection (0-255)
+    pub crop_threshold: u8,
+    /// Binarization preview mode ("keep_white" or "keep_black")
+    pub binarization_mode: BinarizationMode,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Processing result message
@@ -72,6 +76,10 @@ pub struct OutputImageInfo {
     pub was_cropped: bool,
     /// PNG bytes of the processed image (for preview)
     pub preview_data: Vec<u8>,
+    /// PNG bytes of the binarized threshold preview
+    pub threshold_preview_data: Vec<u8>,
+    /// Crop bounds (x, y, width, height)
+    pub crop_bounds: Option<(u32, u32, u32, u32)>,
 }
 
 /// Messages sent from background processing threads
@@ -120,6 +128,8 @@ impl Default for AppState {
             output_preview_path: None,
             initialized: false,
             crop_to_content: false,
+            crop_threshold: 240,
+            binarization_mode: BinarizationMode::KeepWhite,
             selected_output_info: None,
             processing_result: None,
             output_info_loading: false,
@@ -283,6 +293,8 @@ impl AppState {
         
         let settings = ProcessingSettings {
             crop_to_content: self.crop_to_content,
+            crop_threshold: self.crop_threshold,
+            binarization_mode: self.binarization_mode,
         };
         let input_path = input_path.clone();
         let sender = self.background_sender.clone();
@@ -298,6 +310,8 @@ impl AppState {
                         output_height: processed.output_height,
                         was_cropped: processed.was_cropped,
                         preview_data: processed.data,
+                        threshold_preview_data: processed.threshold_preview_data,
+                        crop_bounds: processed.crop_bounds,
                     };
                     let _ = sender.send(BackgroundMessage::OutputInfoReady {
                         input_path,
@@ -325,6 +339,8 @@ impl AppState {
         
         let settings = ProcessingSettings {
             crop_to_content: self.crop_to_content,
+            crop_threshold: self.crop_threshold,
+            binarization_mode: self.binarization_mode,
         };
         
         let image_files = self.image_files.clone();
