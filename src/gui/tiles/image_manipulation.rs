@@ -77,6 +77,21 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.separator();
     ui.add_space(4.0);
     
+    // JPEG quality slider
+    ui.horizontal(|ui| {
+        ui.label("JPEG quality:");
+        let quality_changed = ui.add(
+            egui::Slider::new(&mut state.jpeg_quality, 1..=100)
+                .text("%")
+        ).changed();
+        
+        if quality_changed && state.selected_input_file.is_some() {
+            state.update_selected_output_info();
+        }
+    });
+    
+    ui.add_space(4.0);
+    
     // Sync pan/zoom checkbox
     ui.checkbox(&mut state.sync_preview_pan_zoom, "Sync preview pan/zoom")
         .on_hover_text("Synchronize pan and zoom across input, threshold, and output previews");
@@ -123,7 +138,7 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
                 ui.horizontal(|ui| {
                     ui.label("Dimensions:");
                     ui.label(format!(
-                        "{}x{} → {}x{}",
+                        "{}x{} => {}x{}",
                         output_info.original_width,
                         output_info.original_height,
                         output_info.output_width,

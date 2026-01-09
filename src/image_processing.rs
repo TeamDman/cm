@@ -5,11 +5,16 @@ use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use std::io::Cursor;
 use std::path::Path;
 
+/// Maximum preview dimension (width or height)
+const MAX_PREVIEW_SIZE: u32 = 1024;
+
 /// Result of processing a single image
 #[derive(Clone, Debug)]
 pub struct ProcessedImage {
-    /// The processed image data (PNG encoded)
+    /// The processed image data (in original format when possible)
     pub data: Vec<u8>,
+    /// The output format used
+    pub format: ImageFormat,
     /// Original width
     pub original_width: u32,
     /// Original height
@@ -22,8 +27,10 @@ pub struct ProcessedImage {
     pub was_cropped: bool,
     /// Estimated output file size
     pub estimated_size: u64,
-    /// Binarized threshold preview data (PNG encoded)
+    /// Binarized threshold preview data (PNG encoded, downsampled for preview)
     pub threshold_preview_data: Vec<u8>,
+    /// Downsampled output preview data (PNG encoded for display)
+    pub output_preview_data: Vec<u8>,
     /// Crop bounds (x, y, width, height) if cropping was applied
     pub crop_bounds: Option<(u32, u32, u32, u32)>,
 }
@@ -52,10 +59,48 @@ pub struct ProcessingSettings {
     pub binarization_mode: BinarizationMode,
     /// Thickness of the red bounding box (1-10)
     pub box_thickness: u8,
+    /// JPEG quality (1-100, default 90)
+    pub jpeg_quality: u8,
+}
+
+/// Detect the image format from the file extension
+fn detect_format_from_path(path: &Path) -> ImageFormat {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| match ext.to_lowercase().as_str() {
+            "jpg" | "jpeg" => ImageFormat::Jpeg,
+            "png" => ImageFormat::Png,
+            "webp" => ImageFormat::WebP,
+            "gif" => ImageFormat::Gif,
+            "bmp" => ImageFormat::Bmp,
+            "tiff" | "tif" => ImageFormat::Tiff,
+            _ => ImageFormat::Png, // Default to PNG for unknown formats
+        })
+        .unwrap_or(ImageFormat::Png)
+}
+
+/// Downsample an image for preview while maintaining aspect ratio
+fn downsample_for_preview(img: &DynamicImage) -> DynamicImage {
+    let (width, height) = (img.width(), img.height());
+    
+    // If already small enough, return clone
+    if width <= MAX_PREVIEW_SIZE && height <= MAX_PREVIEW_SIZE {
+        return img.clone();
+    }
+    
+    // Calculate new dimensions maintaining aspect ratio
+    let scale = (MAX_PREVIEW_SIZE as f64 / width.max(height) as f64).min(1.0);
+    let new_width = (width as f64 * scale) as u32;
+    let new_height = (height as f64 * scale) as u32;
+    
+    img.resize(new_width, new_height, image::imageops::FilterType::Triangle)
 }
 
 /// Load and process an image according to settings
 pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<ProcessedImage> {
+    // Detect original format for output
+    let output_format = detect_format_from_path(path);
+    
     // Load the image
     let img = image::open(path)
         .map_err(|e| eyre!("Failed to open image {}: {}", path.display(), e))?;
@@ -63,9 +108,10 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
     let original_width = img.width();
     let original_height = img.height();
     
-    // Generate threshold preview (use default thickness if not specified)
+    // Generate threshold preview using downsampled image for performance
     let box_thickness = if settings.box_thickness == 0 { 10 } else { settings.box_thickness };
-    let threshold_preview_data = create_threshold_preview(&img, settings.crop_threshold, settings.binarization_mode, box_thickness)?;
+    let preview_img = downsample_for_preview(&img);
+    let threshold_preview_data = create_threshold_preview(&preview_img, settings.crop_threshold, settings.binarization_mode, box_thickness)?;
     
     // Apply processing steps
     let (processed, was_cropped, crop_bounds) = if settings.crop_to_content {
@@ -79,16 +125,20 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
     let output_width = processed.width();
     let output_height = processed.height();
     
-    // Encode to PNG in memory
-    let mut data = Vec::new();
-    let mut cursor = Cursor::new(&mut data);
-    processed.write_to(&mut cursor, ImageFormat::Png)
-        .map_err(|e| eyre!("Failed to encode image: {}", e))?;
+    // Create downsampled preview for GUI display (always PNG for fast decoding)
+    let output_preview_img = downsample_for_preview(&processed);
+    let mut output_preview_data = Vec::new();
+    let mut preview_cursor = Cursor::new(&mut output_preview_data);
+    output_preview_img.write_to(&mut preview_cursor, ImageFormat::Png)
+        .map_err(|e| eyre!("Failed to encode output preview: {}", e))?;
     
+    // Encode full-resolution output using the original format
+    let data = encode_image(&processed, output_format, settings.jpeg_quality)?;
     let estimated_size = data.len() as u64;
     
     Ok(ProcessedImage {
         data,
+        format: output_format,
         original_width,
         original_height,
         output_width,
@@ -96,8 +146,42 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
         was_cropped,
         estimated_size,
         threshold_preview_data,
+        output_preview_data,
         crop_bounds,
     })
+}
+
+/// Encode an image to the specified format
+fn encode_image(img: &DynamicImage, format: ImageFormat, jpeg_quality: u8) -> Result<Vec<u8>> {
+    let mut data = Vec::new();
+    let mut cursor = Cursor::new(&mut data);
+    
+    match format {
+        ImageFormat::Jpeg => {
+            // Use JPEG encoder with quality setting
+            let quality = if jpeg_quality == 0 { 90 } else { jpeg_quality };
+            let rgb = img.to_rgb8();
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, quality);
+            encoder.encode(
+                rgb.as_raw(),
+                rgb.width(),
+                rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            ).map_err(|e| eyre!("Failed to encode JPEG: {}", e))?;
+        }
+        ImageFormat::WebP => {
+            // WebP uses quality-like encoding
+            img.write_to(&mut cursor, ImageFormat::WebP)
+                .map_err(|e| eyre!("Failed to encode WebP: {}", e))?;
+        }
+        _ => {
+            // Default to PNG for other formats (lossless)
+            img.write_to(&mut cursor, ImageFormat::Png)
+                .map_err(|e| eyre!("Failed to encode PNG: {}", e))?;
+        }
+    }
+    
+    Ok(data)
 }
 
 /// Create a binarized threshold preview of the image

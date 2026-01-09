@@ -53,6 +53,8 @@ pub struct AppState {
     pub box_thickness: u8,
     /// Synchronize pan/zoom across all image previews
     pub sync_preview_pan_zoom: bool,
+    /// JPEG output quality (1-100)
+    pub jpeg_quality: u8,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Processing result message
@@ -78,9 +80,9 @@ pub struct OutputImageInfo {
     pub output_width: u32,
     pub output_height: u32,
     pub was_cropped: bool,
-    /// PNG bytes of the processed image (for preview)
+    /// Downsampled PNG bytes of the processed image (for GUI preview)
     pub preview_data: Vec<u8>,
-    /// PNG bytes of the binarized threshold preview
+    /// PNG bytes of the binarized threshold preview (downsampled)
     pub threshold_preview_data: Vec<u8>,
     /// Crop bounds (x, y, width, height)
     pub crop_bounds: Option<(u32, u32, u32, u32)>,
@@ -136,6 +138,7 @@ impl Default for AppState {
             binarization_mode: BinarizationMode::KeepWhite,
             box_thickness: 10,
             sync_preview_pan_zoom: true,
+            jpeg_quality: 90,
             selected_output_info: None,
             processing_result: None,
             output_info_loading: false,
@@ -302,6 +305,7 @@ impl AppState {
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
+            jpeg_quality: self.jpeg_quality,
         };
         let input_path = input_path.clone();
         let sender = self.background_sender.clone();
@@ -316,7 +320,7 @@ impl AppState {
                         output_width: processed.output_width,
                         output_height: processed.output_height,
                         was_cropped: processed.was_cropped,
-                        preview_data: processed.data,
+                        preview_data: processed.output_preview_data,
                         threshold_preview_data: processed.threshold_preview_data,
                         crop_bounds: processed.crop_bounds,
                     };
@@ -349,6 +353,7 @@ impl AppState {
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
+            jpeg_quality: self.jpeg_quality,
         };
         
         let image_files = self.image_files.clone();
