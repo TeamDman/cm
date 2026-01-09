@@ -127,6 +127,10 @@ pub fn draw_pan_zoom_image_uri(
 ) {
     let available = ui.available_size();
     
+    // Try to get the actual image size for proper centering
+    let image = egui::Image::new(uri);
+    let image_size = image.calc_size(available, image.size());
+    
     // Allocate space for the image area
     let (rect, response) = ui.allocate_exact_size(
         available,
@@ -162,15 +166,20 @@ pub fn draw_pan_zoom_image_uri(
         state.initialized = false;
     }
     
-    // Initialize zoom if not set
-    if !state.initialized {
-        state.zoom = 1.0;
+    // Initialize zoom to fit image in available space (like draw_pan_zoom_image)
+    if !state.initialized && image_size.x > 0.0 && image_size.y > 0.0 {
+        let fit_scale = (available.x / image_size.x).min(available.y / image_size.y);
+        state.zoom = fit_scale.min(1.0); // Start at fit or 100%, whichever is smaller
+        state.offset = Vec2::ZERO;
         state.initialized = true;
     }
     
-    // Calculate the base size - we'll use the available area as the reference
-    let base_size = available;
-    let display_size = base_size * state.zoom;
+    // Calculate display size based on actual image dimensions and zoom
+    let display_size = if image_size.x > 0.0 && image_size.y > 0.0 {
+        image_size * state.zoom
+    } else {
+        available * state.zoom
+    };
     
     // Calculate image position (centered with offset)
     let image_center = rect.center() + state.offset;
