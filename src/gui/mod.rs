@@ -159,6 +159,26 @@ impl eframe::App for CmApp {
             self.tree.ui(&mut behavior, ui);
         });
 
+        // Sync pan/zoom states if enabled (after drawing so dirty flags are set)
+        if self.state.sync_preview_pan_zoom {
+            // Find which preview was interacted with and sync others to it
+            if self.input_pan_zoom.dirty {
+                self.threshold_pan_zoom.sync_from(&self.input_pan_zoom);
+                self.output_pan_zoom.sync_from(&self.input_pan_zoom);
+            } else if self.threshold_pan_zoom.dirty {
+                self.input_pan_zoom.sync_from(&self.threshold_pan_zoom);
+                self.output_pan_zoom.sync_from(&self.threshold_pan_zoom);
+            } else if self.output_pan_zoom.dirty {
+                self.input_pan_zoom.sync_from(&self.output_pan_zoom);
+                self.threshold_pan_zoom.sync_from(&self.output_pan_zoom);
+            }
+        }
+        
+        // Clear dirty flags for next frame
+        self.input_pan_zoom.dirty = false;
+        self.threshold_pan_zoom.dirty = false;
+        self.output_pan_zoom.dirty = false;
+
         // About window
         if self.state.about_open {
             egui::Window::new("About")

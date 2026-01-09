@@ -73,6 +73,14 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
         }
     });
     
+    ui.add_space(8.0);
+    ui.separator();
+    ui.add_space(4.0);
+    
+    // Sync pan/zoom checkbox
+    ui.checkbox(&mut state.sync_preview_pan_zoom, "Sync preview pan/zoom")
+        .on_hover_text("Synchronize pan and zoom across input, threshold, and output previews");
+    
     // Recalculate output info if settings changed
     if crop_changed && state.selected_input_file.is_some() {
         state.update_selected_output_info();

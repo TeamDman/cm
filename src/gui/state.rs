@@ -51,6 +51,8 @@ pub struct AppState {
     pub binarization_mode: BinarizationMode,
     /// Thickness of the red bounding box in threshold preview (1-10)
     pub box_thickness: u8,
+    /// Synchronize pan/zoom across all image previews
+    pub sync_preview_pan_zoom: bool,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Processing result message
@@ -133,6 +135,7 @@ impl Default for AppState {
             crop_threshold: 10,
             binarization_mode: BinarizationMode::KeepWhite,
             box_thickness: 10,
+            sync_preview_pan_zoom: true,
             selected_output_info: None,
             processing_result: None,
             output_info_loading: false,
