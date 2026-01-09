@@ -14,11 +14,33 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.horizontal(|ui| {
         ui.heading("Output Preview");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("▶ Process All").clicked() {
+            // Disable button while processing
+            let button = egui::Button::new("▶ Process All");
+            if state.process_all_running {
+                ui.add_enabled(false, button);
+            } else if ui.add(button).clicked() {
                 state.process_all();
             }
         });
     });
+
+    // Show processing progress if running
+    if state.process_all_running {
+        if let Some((current, total)) = state.process_all_progress {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(format!("Processing {}/{}...", current, total));
+            });
+            let progress = current as f32 / total.max(1) as f32;
+            ui.add(egui::ProgressBar::new(progress).show_percentage());
+        } else {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Starting...");
+            });
+        }
+        ui.separator();
+    }
 
     // Show processing result if any
     if let Some(ref result) = state.processing_result {

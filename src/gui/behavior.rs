@@ -2,7 +2,8 @@
 
 use crate::gui::state::AppState;
 use crate::gui::tiles;
-use eframe::egui;
+use eframe::egui::{self, TextureHandle};
+use std::path::PathBuf;
 
 /// The different types of panes in our application
 #[derive(Clone, Debug)]
@@ -47,6 +48,8 @@ impl CmPane {
 /// Behavior implementation for our tile tree
 pub struct CmBehavior<'a> {
     pub state: &'a mut AppState,
+    pub output_texture: &'a mut Option<TextureHandle>,
+    pub output_texture_path: &'a mut Option<PathBuf>,
 }
 
 impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
@@ -68,7 +71,12 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
             CmPane::MaxNameLength => tiles::draw_max_name_length_tile(ui, self.state),
             CmPane::OutputPreview => tiles::draw_output_preview_tile(ui, self.state),
             CmPane::InputImagePreview => tiles::draw_input_image_preview_tile(ui, self.state),
-            CmPane::OutputImagePreview => tiles::draw_output_image_preview_tile(ui, self.state),
+            CmPane::OutputImagePreview => tiles::draw_output_image_preview_tile(
+                ui,
+                self.state,
+                self.output_texture,
+                self.output_texture_path,
+            ),
             CmPane::Logs => tiles::draw_logs_tile(ui),
         }
 
@@ -109,8 +117,8 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     // Left column: Input Paths + Input Images (vertical)
     let left_column = tiles.insert_vertical_tile(vec![input_paths_id, input_images_id]);
 
-    // Middle-left column: Image previews as tabs
-    let previews_tabs = tiles.insert_tab_tile(vec![input_image_preview_id, output_image_preview_id]);
+    // Middle-left column: Image previews stacked vertically (input above output)
+    let previews_column = tiles.insert_vertical_tile(vec![input_image_preview_id, output_image_preview_id]);
 
     // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length)
     let settings_column = tiles.insert_vertical_tile(vec![image_manipulation_id, rename_rules_id, max_name_length_id]);
@@ -119,7 +127,7 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     let right_column = output_preview_id;
 
     // Main horizontal layout
-    let root = tiles.insert_horizontal_tile(vec![left_column, previews_tabs, settings_column, right_column]);
+    let root = tiles.insert_horizontal_tile(vec![left_column, previews_column, settings_column, right_column]);
 
     egui_tiles::Tree::new("cm_tree", root, tiles)
 }

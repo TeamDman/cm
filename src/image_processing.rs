@@ -119,8 +119,9 @@ fn is_background_pixel(pixel: &image::Rgba<u8>) -> bool {
         return true;
     }
     
-    // Near-white pixels are background (with some tolerance)
-    let threshold = 250;
+    // Near-white pixels are background (with generous tolerance for JPEG artifacts)
+    // Using 240 to catch off-white pixels from compression/anti-aliasing
+    let threshold = 240;
     r >= threshold && g >= threshold && b >= threshold
 }
 

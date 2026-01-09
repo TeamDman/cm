@@ -16,8 +16,10 @@ use eframe::egui::Id;
 use eframe::egui::LayerId;
 use eframe::egui::Order;
 use eframe::egui::TextStyle;
+use eframe::egui::TextureHandle;
 use eframe::egui::{self};
 use eyre::eyre;
+use std::path::PathBuf;
 use tracing::info;
 
 /// Run the GUI. This is async so the caller can create a runtime; the function will
@@ -43,6 +45,10 @@ pub async fn run_gui() -> eyre::Result<()> {
 struct CmApp {
     tree: egui_tiles::Tree<CmPane>,
     state: AppState,
+    /// Texture handle for output preview (to show cropped images)
+    output_texture: Option<TextureHandle>,
+    /// Path of the image currently loaded in output_texture
+    output_texture_path: Option<PathBuf>,
 }
 
 impl CmApp {
@@ -53,7 +59,12 @@ impl CmApp {
         let tree = create_default_tree();
         let state = AppState::default();
 
-        CmApp { tree, state }
+        CmApp {
+            tree,
+            state,
+            output_texture: None,
+            output_texture_path: None,
+        }
     }
 }
 
@@ -64,6 +75,9 @@ impl eframe::App for CmApp {
             self.state.reload_data();
             self.state.initialized = true;
         }
+
+        // Poll background tasks for completions
+        self.state.poll_background_tasks();
 
         // Handle deferred actions from previous frame
         self.state.handle_deferred_actions();
@@ -111,6 +125,8 @@ impl eframe::App for CmApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut behavior = CmBehavior {
                 state: &mut self.state,
+                output_texture: &mut self.output_texture,
+                output_texture_path: &mut self.output_texture_path,
             };
             self.tree.ui(&mut behavior, ui);
         });

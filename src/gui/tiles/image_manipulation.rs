@@ -40,8 +40,13 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
             }
         }
 
-        // If we have a cached output, show its info
-        if let Some(ref output_info) = state.selected_output_info {
+        // Show loading state or output info
+        if state.output_info_loading {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Processing...");
+            });
+        } else if let Some(ref output_info) = state.selected_output_info {
             ui.horizontal(|ui| {
                 ui.label("Output size:");
                 ui.strong(format_size(output_info.estimated_size));

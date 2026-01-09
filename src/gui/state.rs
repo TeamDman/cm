@@ -7,7 +7,9 @@ use crate::rename_rules::RenameRule;
 use crate::MAX_NAME_LENGTH;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use tracing::info;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use tracing::{info, warn};
 
 /// Shared application state
 pub struct AppState {
@@ -47,6 +49,16 @@ pub struct AppState {
     pub selected_output_info: Option<OutputImageInfo>,
     /// Processing result message
     pub processing_result: Option<String>,
+    /// Whether output info is being calculated in the background
+    pub output_info_loading: bool,
+    /// Whether process_all is running in the background
+    pub process_all_running: bool,
+    /// Progress for process_all (current, total)
+    pub process_all_progress: Option<(usize, usize)>,
+    /// Sender for background tasks
+    background_sender: Sender<BackgroundMessage>,
+    /// Receiver for background task results
+    background_receiver: Receiver<BackgroundMessage>,
 }
 
 /// Info about a processed output image
@@ -58,10 +70,39 @@ pub struct OutputImageInfo {
     pub output_width: u32,
     pub output_height: u32,
     pub was_cropped: bool,
+    /// PNG bytes of the processed image (for preview)
+    pub preview_data: Vec<u8>,
+}
+
+/// Messages sent from background processing threads
+pub enum BackgroundMessage {
+    /// Output info for a selected image is ready
+    OutputInfoReady {
+        input_path: PathBuf,
+        info: OutputImageInfo,
+    },
+    /// Output info processing failed
+    OutputInfoError {
+        input_path: PathBuf,
+        error: String,
+    },
+    /// Processing all images completed
+    ProcessAllComplete {
+        processed_count: usize,
+        error_count: usize,
+        errors: Vec<String>,
+    },
+    /// Progress update for processing all images
+    ProcessAllProgress {
+        current: usize,
+        total: usize,
+        current_file: PathBuf,
+    },
 }
 
 impl Default for AppState {
     fn default() -> Self {
+        let (background_sender, background_receiver) = mpsc::channel();
         Self {
             input_paths: Vec::new(),
             image_files: Vec::new(),
@@ -81,6 +122,11 @@ impl Default for AppState {
             crop_to_content: false,
             selected_output_info: None,
             processing_result: None,
+            output_info_loading: false,
+            process_all_running: false,
+            process_all_progress: None,
+            background_sender,
+            background_receiver,
         }
     }
 }
@@ -223,61 +269,132 @@ impl AppState {
         self.update_selected_output_info();
     }
 
-    /// Update the output info for the selected file
+    /// Update the output info for the selected file (runs in background thread)
     pub fn update_selected_output_info(&mut self) {
         let Some(ref input_path) = self.selected_input_file else {
             self.selected_output_info = None;
+            self.output_info_loading = false;
             return;
         };
+        
+        // Mark as loading
+        self.output_info_loading = true;
+        self.selected_output_info = None;
         
         let settings = ProcessingSettings {
             crop_to_content: self.crop_to_content,
         };
+        let input_path = input_path.clone();
+        let sender = self.background_sender.clone();
         
-        match image_processing::process_image(input_path, &settings) {
-            Ok(processed) => {
-                self.selected_output_info = Some(OutputImageInfo {
-                    estimated_size: processed.estimated_size,
-                    original_width: processed.original_width,
-                    original_height: processed.original_height,
-                    output_width: processed.output_width,
-                    output_height: processed.output_height,
-                    was_cropped: processed.was_cropped,
-                });
+        thread::spawn(move || {
+            match image_processing::process_image(&input_path, &settings) {
+                Ok(processed) => {
+                    let info = OutputImageInfo {
+                        estimated_size: processed.estimated_size,
+                        original_width: processed.original_width,
+                        original_height: processed.original_height,
+                        output_width: processed.output_width,
+                        output_height: processed.output_height,
+                        was_cropped: processed.was_cropped,
+                        preview_data: processed.data,
+                    };
+                    let _ = sender.send(BackgroundMessage::OutputInfoReady {
+                        input_path,
+                        info,
+                    });
+                }
+                Err(e) => {
+                    let _ = sender.send(BackgroundMessage::OutputInfoError {
+                        input_path,
+                        error: e.to_string(),
+                    });
+                }
             }
-            Err(_) => {
-                self.selected_output_info = None;
-            }
-        }
+        });
     }
 
-    /// Process all images according to current settings
+    /// Process all images according to current settings (runs in background thread)
     pub fn process_all(&mut self) {
+        if self.process_all_running {
+            warn!("Process all already running, ignoring request");
+            return;
+        }
+        
         self.update_rename_preview();
         
         let settings = ProcessingSettings {
             crop_to_content: self.crop_to_content,
         };
         
-        match image_processing::process_all_images(
-            &self.image_files,
-            &self.renamed_files,
-            &self.input_paths,
-            &settings,
-            None,
-        ) {
-            Ok(result) => {
-                self.processing_result = Some(format!(
-                    "Processed {} files. {} errors.",
-                    result.processed_count,
-                    result.error_count
-                ));
-                if !result.errors.is_empty() {
-                    info!("Processing errors: {:?}", result.errors);
+        let image_files = self.image_files.clone();
+        let renamed_files = self.renamed_files.clone();
+        let input_paths = self.input_paths.clone();
+        let sender = self.background_sender.clone();
+        
+        self.process_all_running = true;
+        self.process_all_progress = Some((0, image_files.len()));
+        self.processing_result = None;
+        
+        thread::spawn(move || {
+            match image_processing::process_all_images(
+                &image_files,
+                &renamed_files,
+                &input_paths,
+                &settings,
+                None,
+            ) {
+                Ok(result) => {
+                    let _ = sender.send(BackgroundMessage::ProcessAllComplete {
+                        processed_count: result.processed_count,
+                        error_count: result.error_count,
+                        errors: result.errors,
+                    });
+                }
+                Err(e) => {
+                    let _ = sender.send(BackgroundMessage::ProcessAllComplete {
+                        processed_count: 0,
+                        error_count: 1,
+                        errors: vec![e.to_string()],
+                    });
                 }
             }
-            Err(e) => {
-                self.processing_result = Some(format!("Processing failed: {}", e));
+        });
+    }
+    
+    /// Poll for background task completions (call this each frame)
+    pub fn poll_background_tasks(&mut self) {
+        // Process all pending messages
+        while let Ok(msg) = self.background_receiver.try_recv() {
+            match msg {
+                BackgroundMessage::OutputInfoReady { input_path, info } => {
+                    // Only update if this is still the selected file
+                    if self.selected_input_file.as_ref() == Some(&input_path) {
+                        self.selected_output_info = Some(info);
+                        self.output_info_loading = false;
+                    }
+                }
+                BackgroundMessage::OutputInfoError { input_path, error } => {
+                    if self.selected_input_file.as_ref() == Some(&input_path) {
+                        self.output_info_loading = false;
+                        info!("Failed to process image {}: {}", input_path.display(), error);
+                    }
+                }
+                BackgroundMessage::ProcessAllComplete { processed_count, error_count, errors } => {
+                    self.process_all_running = false;
+                    self.process_all_progress = None;
+                    self.processing_result = Some(format!(
+                        "Processed {} files. {} errors.",
+                        processed_count,
+                        error_count
+                    ));
+                    if !errors.is_empty() {
+                        info!("Processing errors: {:?}", errors);
+                    }
+                }
+                BackgroundMessage::ProcessAllProgress { current, total, current_file: _ } => {
+                    self.process_all_progress = Some((current, total));
+                }
             }
         }
     }
