@@ -173,6 +173,11 @@ pub enum BackgroundMessage {
     },
     /// Image cache loading failed
     ImageCacheError { path: PathBuf },
+    /// Processing a single selected image completed
+    ProcessSelectedComplete {
+        success: bool,
+        error: Option<String>,
+    },
 }
 
 impl Default for AppState {
@@ -626,6 +631,102 @@ impl AppState {
         });
     }
 
+    /// Process just the currently selected image (runs in background)
+    pub fn process_selected(&mut self) {
+        if self.process_all_running {
+            warn!("Processing already running, ignoring request");
+            return;
+        }
+
+        let Some(selected_input) = self.selected_input_file.clone() else {
+            self.processing_result = Some("No file selected".to_string());
+            return;
+        };
+
+        // Find the corresponding renamed file
+        let Some(idx) = self.image_files.iter().position(|f| f == &selected_input) else {
+            self.processing_result = Some("Selected file not found in image list".to_string());
+            return;
+        };
+
+        let Some(renamed_file) = self.renamed_files.get(idx).cloned() else {
+            self.processing_result = Some("No renamed file for selection".to_string());
+            return;
+        };
+
+        // Find input root
+        let Some(input_root) = self.input_paths.iter().find(|r| selected_input.starts_with(r)).cloned() else {
+            self.processing_result = Some("Could not find input root for selected file".to_string());
+            return;
+        };
+
+        self.update_rename_preview();
+
+        let settings = ProcessingSettings {
+            crop_to_content: self.crop_to_content,
+            crop_threshold: self.crop_threshold,
+            binarization_mode: self.binarization_mode,
+            box_thickness: self.box_thickness,
+            jpeg_quality: self.jpeg_quality,
+        };
+
+        let sender = self.background_sender.clone();
+
+        self.process_all_running = true;
+        self.process_all_progress = Some((0, 1));
+        self.processing_result = None;
+
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || -> eyre::Result<()> {
+                // Get the renamed filename
+                let renamed_name = renamed_file
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                // Calculate output path
+                let Some(output_path) = image_processing::get_output_path(&selected_input, &input_root, &renamed_name) else {
+                    return Err(eyre::eyre!("Could not calculate output path"));
+                };
+
+                // Create output directory if needed
+                if let Some(parent) = output_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                // Process the image
+                let processed = image_processing::process_image(&selected_input, &settings)?;
+
+                // Write output file
+                std::fs::write(&output_path, &processed.data)?;
+
+                Ok(())
+            })
+            .await;
+
+            match result {
+                Ok(Ok(())) => {
+                    let _ = sender.send(BackgroundMessage::ProcessSelectedComplete {
+                        success: true,
+                        error: None,
+                    });
+                }
+                Ok(Err(e)) => {
+                    let _ = sender.send(BackgroundMessage::ProcessSelectedComplete {
+                        success: false,
+                        error: Some(e.to_string()),
+                    });
+                }
+                Err(e) => {
+                    let _ = sender.send(BackgroundMessage::ProcessSelectedComplete {
+                        success: false,
+                        error: Some(format!("Task panicked: {}", e)),
+                    });
+                }
+            }
+        });
+    }
+
     /// Poll for background task completions (call this each frame)
     pub fn poll_background_tasks(&mut self) {
         // Process all pending messages
@@ -702,6 +803,18 @@ impl AppState {
                 }
                 BackgroundMessage::ImageCacheError { path } => {
                     self.images_loading.remove(&path);
+                }
+                BackgroundMessage::ProcessSelectedComplete { success, error } => {
+                    self.process_all_running = false;
+                    self.process_all_progress = None;
+                    if success {
+                        self.processing_result = Some("Processed 1 file successfully.".to_string());
+                    } else {
+                        self.processing_result = Some(format!(
+                            "Failed to process file: {}",
+                            error.unwrap_or_else(|| "Unknown error".to_string())
+                        ));
+                    }
                 }
             }
         }

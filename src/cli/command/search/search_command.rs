@@ -112,7 +112,7 @@ impl SearchArgs {
             response_status = Empty,
         );
         let mut query_params = vec![
-            ("lastViewed", "664269"),
+            // ("lastViewed", "664269"),
             ("userId", user.as_str()),
             ("siteId", site_id.as_str()),
             ("sessionId", session.as_str()),

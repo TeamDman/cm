@@ -13,16 +13,25 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
     // Update the rename preview cache if needed
     state.update_rename_preview();
 
-    // Header with Process All button
+    // Header with Process All and Process Selected buttons
     ui.horizontal(|ui| {
         ui.heading("Output Preview");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Disable button while processing
-            let button = egui::Button::new("▶ Process All");
+            // Process All button - disable while processing
+            let process_all_btn = egui::Button::new("▶ Process All");
             if state.process_all_running {
-                ui.add_enabled(false, button);
-            } else if ui.add(button).clicked() {
+                ui.add_enabled(false, process_all_btn);
+            } else if ui.add(process_all_btn).clicked() {
                 state.process_all();
+            }
+
+            // Process Selected button - disable while processing or if nothing selected
+            let process_selected_btn = egui::Button::new("▶ Process Selected");
+            let can_process_selected = !state.process_all_running && state.selected_input_file.is_some();
+            if !can_process_selected {
+                ui.add_enabled(false, process_selected_btn);
+            } else if ui.add(process_selected_btn).clicked() {
+                state.process_selected();
             }
         });
     });

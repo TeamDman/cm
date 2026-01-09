@@ -556,15 +556,22 @@ pub fn show_rename_tree_node(
                 }
                 let response = response.on_hover_text(tooltip);
 
-                // Context menu to open the file in Explorer/Finder (prefer original input path)
+                // Context menu to open the file in Explorer/Finder (prefer output path)
                 if let Some(open_path) = node
-                    .original_input_path
+                    .full_path
                     .as_ref()
-                    .or(node.full_path.as_ref())
+                    .or(node.original_input_path.as_ref())
                 {
                     response.context_menu(|ui| {
                         if ui.button("Open in explorer").clicked() {
-                            open_in_explorer(open_path);
+                            if open_path.exists() {
+                                open_in_explorer(open_path);
+                            } else {
+                                tracing::error!(
+                                    "Cannot open in explorer: path does not exist: {}",
+                                    open_path.display()
+                                );
+                            }
                             ui.close();
                         }
                     });
@@ -574,7 +581,14 @@ pub fn show_rename_tree_node(
                 if let Some(open_path) = node.original_input_path.as_ref() {
                     response.context_menu(|ui| {
                         if ui.button("Open in explorer").clicked() {
-                            open_in_explorer(open_path);
+                            if open_path.exists() {
+                                open_in_explorer(open_path);
+                            } else {
+                                tracing::error!(
+                                    "Cannot open in explorer: path does not exist: {}",
+                                    open_path.display()
+                                );
+                            }
                             ui.close();
                         }
                     });
