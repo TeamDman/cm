@@ -84,6 +84,14 @@ impl eframe::App for CmApp {
 
         // Poll background tasks for completions
         self.state.poll_background_tasks();
+        
+        // Clear textures if output info is being recalculated
+        if self.state.output_info_loading {
+            self.output_texture = None;
+            self.output_texture_path = None;
+            self.threshold_texture = None;
+            self.threshold_texture_path = None;
+        }
 
         // Handle deferred actions from previous frame
         self.state.handle_deferred_actions();

@@ -132,19 +132,16 @@ fn draw_output_preview_with_texture(
                 
                 // Show the texture if we have it
                 if let Some(tex) = texture {
-                    ScrollArea::both()
-                        .id_salt("output_image_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            let available = ui.available_size();
-                            let tex_size = tex.size_vec2();
-                            
-                            // Scale to fit while maintaining aspect ratio
-                            let scale = (available.x / tex_size.x).min(available.y / tex_size.y).min(1.0);
-                            let display_size = Vec2::new(tex_size.x * scale, tex_size.y * scale);
-                            
-                            ui.image(SizedTexture::new(tex.id(), display_size));
-                        });
+                    let available = ui.available_size();
+                    let tex_size = tex.size_vec2();
+                    
+                    // Scale to fit while maintaining aspect ratio (allow shrinking)
+                    let scale = (available.x / tex_size.x).min(available.y / tex_size.y);
+                    let display_size = Vec2::new(tex_size.x * scale, tex_size.y * scale);
+                    
+                    ui.centered_and_justified(|ui| {
+                        ui.image(SizedTexture::new(tex.id(), display_size));
+                    });
                 }
             } else if state.output_info_loading {
                 // Show loading spinner
@@ -225,20 +222,15 @@ fn draw_image_preview(
             // Display the image using egui's Image widget with file:// URI
             let uri = format!("file://{}", path.display());
             
-            ScrollArea::both()
-                .id_salt(format!("{}_image_scroll", kind))
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    let available = ui.available_size();
-                    
-                    // Create the image widget - it will auto-size to fit available space
-                    let image = egui::Image::new(&uri)
-                        .fit_to_exact_size(Vec2::new(available.x, available.y))
-                        .maintain_aspect_ratio(true)
-                        .shrink_to_fit();
-                    
-                    ui.add(image);
-                });
+            let available = ui.available_size();
+            
+            // Create the image widget - scale to fit available space
+            let image = egui::Image::new(&uri)
+                .max_size(available)
+                .fit_to_original_size(1.0)
+                .shrink_to_fit();
+            
+            ui.add(image);
         }
         None => {
             ui.vertical_centered(|ui| {

@@ -17,47 +17,45 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
     
     ui.add_space(8.0);
     
-    // Threshold slider (only enabled when crop is enabled)
-    ui.add_enabled_ui(state.crop_to_content, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Threshold:");
-            let threshold_changed = ui.add(
-                egui::Slider::new(&mut state.crop_threshold, 0..=255)
-                    .text("tolerance")
-            ).changed();
-            
-            if threshold_changed {
-                crop_changed = true;
-            }
-        });
+    // Threshold slider (always show but only affects when crop is enabled)
+    ui.horizontal(|ui| {
+        ui.label("Threshold:");
+        let threshold_changed = ui.add(
+            egui::Slider::new(&mut state.crop_threshold, 0..=255)
+                .text("tolerance")
+        ).changed();
         
-        ui.add_space(4.0);
+        if threshold_changed {
+            crop_changed = true;
+        }
+    });
+    
+    ui.add_space(4.0);
+    
+    // Binarization mode dropdown (always show)
+    ui.horizontal(|ui| {
+        ui.label("Preview mode:");
+        let mode_changed = egui::ComboBox::from_id_salt("binarization_mode")
+            .selected_text(match state.binarization_mode {
+                BinarizationMode::KeepWhite => "Keep White",
+                BinarizationMode::KeepBlack => "Keep Black",
+            })
+            .show_ui(ui, |ui| {
+                let mut changed = false;
+                changed |= ui.selectable_value(&mut state.binarization_mode, BinarizationMode::KeepWhite, "Keep White")
+                    .on_hover_text("Show content as black, background as white")
+                    .clicked();
+                changed |= ui.selectable_value(&mut state.binarization_mode, BinarizationMode::KeepBlack, "Keep Black")
+                    .on_hover_text("Show content as white, background as black")
+                    .clicked();
+                changed
+            })
+            .inner
+            .unwrap_or(false);
         
-        // Binarization mode dropdown
-        ui.horizontal(|ui| {
-            ui.label("Preview mode:");
-            let mode_changed = egui::ComboBox::from_id_salt("binarization_mode")
-                .selected_text(match state.binarization_mode {
-                    BinarizationMode::KeepWhite => "Keep White",
-                    BinarizationMode::KeepBlack => "Keep Black",
-                })
-                .show_ui(ui, |ui| {
-                    let mut changed = false;
-                    changed |= ui.selectable_value(&mut state.binarization_mode, BinarizationMode::KeepWhite, "Keep White")
-                        .on_hover_text("Show content as black, background as white")
-                        .clicked();
-                    changed |= ui.selectable_value(&mut state.binarization_mode, BinarizationMode::KeepBlack, "Keep Black")
-                        .on_hover_text("Show content as white, background as black")
-                        .clicked();
-                    changed
-                })
-                .inner
-                .unwrap_or(false);
-            
-            if mode_changed {
-                crop_changed = true;
-            }
-        });
+        if mode_changed {
+            crop_changed = true;
+        }
     });
     
     // Recalculate output info if settings changed

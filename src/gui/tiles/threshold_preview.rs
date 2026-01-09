@@ -1,7 +1,7 @@
 //! Threshold preview tile - shows binarized image with crop bounding box
 
 use crate::gui::state::AppState;
-use eframe::egui::{self, load::SizedTexture, ScrollArea, TextureHandle, TextureOptions, Vec2};
+use eframe::egui::{self, load::SizedTexture, TextureHandle, TextureOptions, Vec2};
 use std::path::PathBuf;
 
 /// Draw the threshold preview tile
@@ -35,9 +35,10 @@ pub fn draw_threshold_preview_tile(
             
             // Show the threshold preview if we have output info
             if let Some(ref output_info) = state.selected_output_info {
-                // Check if we need to reload the texture
+                // Always reload the texture since we need to regenerate when settings change
                 let needs_reload = threshold_texture_path.as_ref() != Some(input_path) 
-                    || threshold_texture.is_none();
+                    || threshold_texture.is_none() 
+                    || state.output_info_loading;
                 
                 if needs_reload {
                     // Load the threshold preview from PNG bytes
@@ -61,19 +62,16 @@ pub fn draw_threshold_preview_tile(
                 
                 // Show the texture if we have it
                 if let Some(tex) = threshold_texture {
-                    ScrollArea::both()
-                        .id_salt("threshold_preview_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            let available = ui.available_size();
-                            let tex_size = tex.size_vec2();
-                            
-                            // Scale to fit while maintaining aspect ratio
-                            let scale = (available.x / tex_size.x).min(available.y / tex_size.y).min(1.0);
-                            let display_size = Vec2::new(tex_size.x * scale, tex_size.y * scale);
-                            
-                            ui.image(SizedTexture::new(tex.id(), display_size));
-                        });
+                    let available = ui.available_size();
+                    let tex_size = tex.size_vec2();
+                    
+                    // Scale to fit while maintaining aspect ratio (allow shrinking)
+                    let scale = (available.x / tex_size.x).min(available.y / tex_size.y);
+                    let display_size = Vec2::new(tex_size.x * scale, tex_size.y * scale);
+                    
+                    ui.centered_and_justified(|ui| {
+                        ui.image(SizedTexture::new(tex.id(), display_size));
+                    });
                 } else {
                     ui.vertical_centered(|ui| {
                         ui.add_space(20.0);
