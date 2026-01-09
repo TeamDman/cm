@@ -132,7 +132,7 @@ impl Default for AppState {
             crop_to_content: true,
             crop_threshold: 10,
             binarization_mode: BinarizationMode::KeepWhite,
-            box_thickness: 3,
+            box_thickness: 10,
             selected_output_info: None,
             processing_result: None,
             output_info_loading: false,
