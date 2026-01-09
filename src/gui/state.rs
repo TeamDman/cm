@@ -49,6 +49,8 @@ pub struct AppState {
     pub crop_threshold: u8,
     /// Binarization preview mode ("keep_white" or "keep_black")
     pub binarization_mode: BinarizationMode,
+    /// Thickness of the red bounding box in threshold preview (1-10)
+    pub box_thickness: u8,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Processing result message
@@ -130,6 +132,7 @@ impl Default for AppState {
             crop_to_content: true,
             crop_threshold: 10,
             binarization_mode: BinarizationMode::KeepWhite,
+            box_thickness: 3,
             selected_output_info: None,
             processing_result: None,
             output_info_loading: false,
@@ -295,6 +298,7 @@ impl AppState {
             crop_to_content: self.crop_to_content,
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
+            box_thickness: self.box_thickness,
         };
         let input_path = input_path.clone();
         let sender = self.background_sender.clone();
@@ -341,6 +345,7 @@ impl AppState {
             crop_to_content: self.crop_to_content,
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
+            box_thickness: self.box_thickness,
         };
         
         let image_files = self.image_files.clone();

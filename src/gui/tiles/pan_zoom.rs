@@ -79,8 +79,8 @@ pub fn draw_pan_zoom_image(
         }
     }
     
-    // Double-click to reset view
-    if response.double_clicked() {
+    // Double-click or right-click to reset view
+    if response.double_clicked() || response.secondary_clicked() {
         state.zoom = 1.0;
         state.offset = Vec2::ZERO;
         state.initialized = false;
@@ -90,11 +90,8 @@ pub fn draw_pan_zoom_image(
     let image_center = rect.center() + state.offset;
     let image_rect = Rect::from_center_size(image_center, display_size);
     
-    // Clip to the available area
-    ui.set_clip_rect(rect);
-    
-    // Draw the image
-    let painter = ui.painter();
+    // Use a clipped painter to respect tile boundaries
+    let painter = ui.painter().with_clip_rect(rect);
     
     // Calculate UV coordinates for the visible portion
     let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -111,7 +108,7 @@ pub fn draw_pan_zoom_image(
         rect,
         0.0,
         egui::Stroke::new(1.0, Color32::from_gray(60)),
-        egui::epaint::StrokeKind::Outside,
+        egui::epaint::StrokeKind::Inside,
     );
     
     // Show zoom level hint on hover
@@ -158,8 +155,8 @@ pub fn draw_pan_zoom_image_uri(
         }
     }
     
-    // Double-click to reset view
-    if response.double_clicked() {
+    // Double-click or right-click to reset view
+    if response.double_clicked() || response.secondary_clicked() {
         state.zoom = 1.0;
         state.offset = Vec2::ZERO;
         state.initialized = false;
@@ -179,26 +176,35 @@ pub fn draw_pan_zoom_image_uri(
     let image_center = rect.center() + state.offset;
     let image_rect = Rect::from_center_size(image_center, display_size);
     
-    // For URI images, use a child UI positioned at the image rect
+    // For URI images, use a child UI with proper clipping
     {
-        let mut image_ui = ui.new_child(egui::UiBuilder::new().max_rect(image_rect));
+        // Create a clipped child UI that respects the tile boundaries
+        let mut image_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(rect)
+        );
         image_ui.set_clip_rect(rect);
         
+        // Position the image within the clipped area
         let image = egui::Image::new(uri);
-        image_ui.add(
-            image
-                .fit_to_exact_size(display_size)
-                .maintain_aspect_ratio(true)
-        );
+        
+        image_ui.allocate_new_ui(egui::UiBuilder::new().max_rect(image_rect), |ui| {
+            ui.set_clip_rect(rect);
+            ui.add(
+                image
+                    .fit_to_exact_size(display_size)
+                    .maintain_aspect_ratio(true)
+            );
+        });
     }
     
     // Draw a subtle border around the view area (get painter after child UI is done)
-    let painter = ui.painter();
+    let painter = ui.painter().with_clip_rect(rect);
     painter.rect_stroke(
         rect,
         0.0,
         egui::Stroke::new(1.0, Color32::from_gray(60)),
-        egui::epaint::StrokeKind::Outside,
+        egui::epaint::StrokeKind::Inside,
     );
     
     // Show zoom level hint on hover

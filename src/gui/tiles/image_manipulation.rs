@@ -58,6 +58,21 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
         }
     });
     
+    ui.add_space(4.0);
+    
+    // Box thickness slider
+    ui.horizontal(|ui| {
+        ui.label("Box thickness:");
+        let thickness_changed = ui.add(
+            egui::Slider::new(&mut state.box_thickness, 1..=50)
+                .text("px")
+        ).changed();
+        
+        if thickness_changed {
+            crop_changed = true;
+        }
+    });
+    
     // Recalculate output info if settings changed
     if crop_changed && state.selected_input_file.is_some() {
         state.update_selected_output_info();

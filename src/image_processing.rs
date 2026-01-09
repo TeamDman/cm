@@ -50,6 +50,8 @@ pub struct ProcessingSettings {
     pub crop_threshold: u8,
     /// Binarization preview mode
     pub binarization_mode: BinarizationMode,
+    /// Thickness of the red bounding box (1-10)
+    pub box_thickness: u8,
 }
 
 /// Load and process an image according to settings
@@ -61,8 +63,9 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
     let original_width = img.width();
     let original_height = img.height();
     
-    // Generate threshold preview
-    let threshold_preview_data = create_threshold_preview(&img, settings.crop_threshold, settings.binarization_mode)?;
+    // Generate threshold preview (use default thickness if not specified)
+    let box_thickness = if settings.box_thickness == 0 { 10 } else { settings.box_thickness };
+    let threshold_preview_data = create_threshold_preview(&img, settings.crop_threshold, settings.binarization_mode, box_thickness)?;
     
     // Apply processing steps
     let (processed, was_cropped, crop_bounds) = if settings.crop_to_content {
@@ -102,6 +105,7 @@ fn create_threshold_preview(
     img: &DynamicImage,
     threshold: u8,
     mode: BinarizationMode,
+    box_thickness: u8,
 ) -> Result<Vec<u8>> {
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
@@ -142,7 +146,7 @@ fn create_threshold_preview(
     // Draw red bounding box if there's content to crop
     let bounds = find_content_bounds(&rgba, &background_color, threshold);
     if let Some((min_x, min_y, max_x, max_y)) = bounds {
-        draw_bounding_box(&mut binary_img, min_x, min_y, max_x, max_y);
+        draw_bounding_box(&mut binary_img, min_x, min_y, max_x, max_y, box_thickness as u32);
     }
     
     // Encode to PNG
@@ -265,9 +269,8 @@ fn find_content_bounds(
 }
 
 /// Draw a red bounding box on an image
-fn draw_bounding_box(img: &mut RgbaImage, min_x: u32, min_y: u32, max_x: u32, max_y: u32) {
+fn draw_bounding_box(img: &mut RgbaImage, min_x: u32, min_y: u32, max_x: u32, max_y: u32, thickness: u32) {
     let red = Rgba([255, 0, 0, 255]);
-    let thickness = 2;
     
     let (width, height) = img.dimensions();
     
