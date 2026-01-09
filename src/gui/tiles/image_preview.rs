@@ -1,8 +1,12 @@
 //! Image preview tile - shows input or output image preview
 
 use crate::gui::state::AppState;
-use crate::gui::tiles::pan_zoom::{PanZoomState, draw_pan_zoom_image, draw_pan_zoom_image_uri};
-use eframe::egui::{self, TextureHandle, TextureOptions};
+use crate::gui::tiles::pan_zoom::PanZoomState;
+use crate::gui::tiles::pan_zoom::draw_pan_zoom_image;
+use crate::gui::tiles::pan_zoom::draw_pan_zoom_image_uri;
+use eframe::egui::TextureHandle;
+use eframe::egui::TextureOptions;
+use eframe::egui::{self};
 use std::path::PathBuf;
 
 /// Draw an image preview tile for input images
@@ -44,8 +48,7 @@ pub fn draw_output_image_preview_tile(
             } else {
                 ui.label(format!(
                     "📐 {}x{}",
-                    output_info.original_width,
-                    output_info.original_height
+                    output_info.original_width, output_info.original_height
                 ));
             }
         });
@@ -57,16 +60,11 @@ pub fn draw_output_image_preview_tile(
         });
         ui.separator();
     }
-    
+
     // Show the processed image preview
-    let should_clear = draw_output_preview_with_texture(
-        ui,
-        state,
-        output_texture,
-        output_texture_path,
-        pan_zoom,
-    );
-    
+    let should_clear =
+        draw_output_preview_with_texture(ui, state, output_texture, output_texture_path, pan_zoom);
+
     if should_clear {
         state.selected_input_file = None;
         state.input_preview_path = None;
@@ -87,9 +85,9 @@ fn draw_output_preview_with_texture(
     pan_zoom: &mut PanZoomState,
 ) -> bool {
     let mut should_clear = false;
-    
+
     let current_input = state.selected_input_file.as_ref();
-    
+
     match current_input {
         Some(input_path) => {
             // Header with path and clear button
@@ -97,40 +95,37 @@ fn draw_output_preview_with_texture(
                 if ui.small_button("✖").clicked() {
                     should_clear = true;
                 }
-                
+
                 let filename = input_path
                     .file_name()
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| input_path.display().to_string());
-                
+
                 let label = if state.crop_to_content {
                     format!("{} (cropped preview)", filename)
                 } else {
                     filename
                 };
-                
+
                 let response = ui.label(&label);
                 response.on_hover_text(input_path.display().to_string());
             });
             ui.separator();
-            
+
             // Update texture if we have new output info
             if let Some(ref output_info) = state.selected_output_info {
                 // Check if we need to reload the texture
-                let needs_reload = texture_path.as_ref() != Some(input_path) 
-                    || texture.is_none();
-                
+                let needs_reload = texture_path.as_ref() != Some(input_path) || texture.is_none();
+
                 if needs_reload {
                     // Load the processed image from PNG bytes
                     if let Ok(image) = image::load_from_memory(&output_info.preview_data) {
                         let size = [image.width() as _, image.height() as _];
                         let rgba = image.to_rgba8();
                         let pixels = rgba.as_flat_samples();
-                        let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                            size,
-                            pixels.as_slice(),
-                        );
-                        
+                        let color_image =
+                            egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+
                         *texture = Some(ui.ctx().load_texture(
                             format!("output_preview_{}", input_path.display()),
                             color_image,
@@ -140,7 +135,7 @@ fn draw_output_preview_with_texture(
                         pan_zoom.reset(); // Reset pan/zoom when loading new image
                     }
                 }
-                
+
                 // Show the texture with pan/zoom support
                 if let Some(tex) = texture {
                     draw_pan_zoom_image(ui, tex, pan_zoom, "output_preview");
@@ -164,7 +159,7 @@ fn draw_output_preview_with_texture(
                 *texture = None;
                 *texture_path = None;
             }
-            
+
             ui.vertical_centered(|ui| {
                 ui.add_space(20.0);
                 ui.label("Click an image in the output tree to preview it here.");
@@ -193,13 +188,13 @@ fn draw_image_preview_with_pan_zoom(
                 if ui.small_button("✖").clicked() {
                     should_clear = true;
                 }
-                
+
                 // Show just the filename, with full path on hover
                 let filename = path
                     .file_name()
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| path.display().to_string());
-                
+
                 let response = ui.label(&filename);
                 response.on_hover_text(path.display().to_string());
             });
@@ -219,7 +214,10 @@ fn draw_image_preview_with_pan_zoom(
         None => {
             ui.vertical_centered(|ui| {
                 ui.add_space(20.0);
-                ui.label(format!("Click an image in the {} tree to preview it here.", kind));
+                ui.label(format!(
+                    "Click an image in the {} tree to preview it here.",
+                    kind
+                ));
                 ui.add_space(10.0);
                 ui.label("Scroll to zoom, drag to pan, double-click to reset.");
             });

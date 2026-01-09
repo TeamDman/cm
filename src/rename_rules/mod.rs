@@ -115,9 +115,13 @@ pub fn list_rules(home: &AppHome) -> eyre::Result<Vec<(usize, RenameRule)>> {
     let files = list_rule_files(home)?;
     let mut out_rules = Vec::new();
     for p in files.iter() {
-        if let Ok(text) = std::fs::read_to_string(p) && let Ok(mut rule) = RenameRule::from_file_text(&text) {
+        if let Ok(text) = std::fs::read_to_string(p)
+            && let Ok(mut rule) = RenameRule::from_file_text(&text)
+        {
             // Parse id from filename (stem)
-            if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) && let Ok(id) = Uuid::parse_str(stem) {
+            if let Some(stem) = p.file_stem().and_then(|s| s.to_str())
+                && let Ok(id) = Uuid::parse_str(stem)
+            {
                 rule.id = id;
             }
             out_rules.push(rule);

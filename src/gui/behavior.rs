@@ -2,7 +2,8 @@
 
 use crate::gui::state::AppState;
 use crate::gui::tiles;
-use eframe::egui::{self, TextureHandle};
+use eframe::egui::TextureHandle;
+use eframe::egui::{self};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -75,16 +76,16 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
     ) -> egui_tiles::UiResponse {
         match pane {
             CmPane::InputPaths => tiles::draw_input_paths_tile(ui, self.state),
-            CmPane::InputImages => tiles::draw_input_images_tile(ui, self.state, self.thumbnail_textures),
+            CmPane::InputImages => {
+                tiles::draw_input_images_tile(ui, self.state, self.thumbnail_textures)
+            }
             CmPane::ImageManipulation => tiles::draw_image_manipulation_tile(ui, self.state),
             CmPane::RenameRules => tiles::draw_rename_rules_tile(ui, self.state),
             CmPane::MaxNameLength => tiles::draw_max_name_length_tile(ui, self.state),
             CmPane::OutputPreview => tiles::draw_output_preview_tile(ui, self.state),
-            CmPane::InputImagePreview => tiles::draw_input_image_preview_tile(
-                ui,
-                self.state,
-                self.input_pan_zoom,
-            ),
+            CmPane::InputImagePreview => {
+                tiles::draw_input_image_preview_tile(ui, self.state, self.input_pan_zoom)
+            }
             CmPane::ThresholdPreview => tiles::draw_threshold_preview_tile(
                 ui,
                 self.state,
@@ -141,16 +142,29 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     let left_column = tiles.insert_vertical_tile(vec![input_paths_id, input_images_id]);
 
     // Middle-left column: Image previews stacked vertically (input, threshold, output)
-    let previews_column = tiles.insert_vertical_tile(vec![input_image_preview_id, threshold_preview_id, output_image_preview_id]);
+    let previews_column = tiles.insert_vertical_tile(vec![
+        input_image_preview_id,
+        threshold_preview_id,
+        output_image_preview_id,
+    ]);
 
     // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length)
-    let settings_column = tiles.insert_vertical_tile(vec![image_manipulation_id, rename_rules_id, max_name_length_id]);
+    let settings_column = tiles.insert_vertical_tile(vec![
+        image_manipulation_id,
+        rename_rules_id,
+        max_name_length_id,
+    ]);
 
     // Right column: Output Preview
     let right_column = output_preview_id;
 
     // Main horizontal layout
-    let root = tiles.insert_horizontal_tile(vec![left_column, previews_column, settings_column, right_column]);
+    let root = tiles.insert_horizontal_tile(vec![
+        left_column,
+        previews_column,
+        settings_column,
+        right_column,
+    ]);
 
     egui_tiles::Tree::new("cm_tree", root, tiles)
 }

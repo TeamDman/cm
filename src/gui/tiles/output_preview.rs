@@ -1,9 +1,12 @@
 //! Output preview tile - shows renamed files with status colors
 
 use crate::gui::state::AppState;
-use crate::gui::tree_view::{group_files_with_renames, show_rename_group_with_output_path};
+use crate::gui::tree_view::group_files_with_renames;
+use crate::gui::tree_view::show_rename_group_with_output_path;
 use crate::image_processing::get_output_dir;
-use eframe::egui::{self, Color32, ScrollArea};
+use eframe::egui::Color32;
+use eframe::egui::ScrollArea;
+use eframe::egui::{self};
 
 /// Draw the output preview tile UI
 pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {

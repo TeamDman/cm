@@ -1,8 +1,8 @@
 //! Max name length tile - global setting for maximum file name length
 
-use crate::gui::state::AppState;
-use crate::MaxNameLength;
 use crate::MAX_NAME_LENGTH;
+use crate::MaxNameLength;
+use crate::gui::state::AppState;
 use eframe::egui;
 use std::sync::atomic::Ordering;
 

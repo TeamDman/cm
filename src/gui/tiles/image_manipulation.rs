@@ -11,27 +11,27 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.separator();
 
     // Crop to content checkbox
-    let mut crop_changed = ui.checkbox(&mut state.crop_to_content, "Crop images to content")
+    let mut crop_changed = ui
+        .checkbox(&mut state.crop_to_content, "Crop images to content")
         .on_hover_text("Remove padding from images based on threshold")
         .changed();
-    
+
     ui.add_space(8.0);
-    
+
     // Threshold slider (always show but only affects when crop is enabled)
     ui.horizontal(|ui| {
         ui.label("Threshold:");
-        let threshold_changed = ui.add(
-            egui::Slider::new(&mut state.crop_threshold, 0..=255)
-                .text("tolerance")
-        ).changed();
-        
+        let threshold_changed = ui
+            .add(egui::Slider::new(&mut state.crop_threshold, 0..=255).text("tolerance"))
+            .changed();
+
         if threshold_changed {
             crop_changed = true;
         }
     });
-    
+
     ui.add_space(4.0);
-    
+
     // Binarization mode dropdown (always show)
     ui.horizontal(|ui| {
         ui.label("Preview mode:");
@@ -42,60 +42,68 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
             })
             .show_ui(ui, |ui| {
                 let mut changed = false;
-                changed |= ui.selectable_value(&mut state.binarization_mode, BinarizationMode::KeepWhite, "Keep White")
+                changed |= ui
+                    .selectable_value(
+                        &mut state.binarization_mode,
+                        BinarizationMode::KeepWhite,
+                        "Keep White",
+                    )
                     .on_hover_text("Show content as black, background as white")
                     .clicked();
-                changed |= ui.selectable_value(&mut state.binarization_mode, BinarizationMode::KeepBlack, "Keep Black")
+                changed |= ui
+                    .selectable_value(
+                        &mut state.binarization_mode,
+                        BinarizationMode::KeepBlack,
+                        "Keep Black",
+                    )
                     .on_hover_text("Show content as white, background as black")
                     .clicked();
                 changed
             })
             .inner
             .unwrap_or(false);
-        
+
         if mode_changed {
             crop_changed = true;
         }
     });
-    
+
     ui.add_space(4.0);
-    
+
     // Box thickness slider
     ui.horizontal(|ui| {
         ui.label("Box thickness:");
-        let thickness_changed = ui.add(
-            egui::Slider::new(&mut state.box_thickness, 1..=50)
-                .text("px")
-        ).changed();
-        
+        let thickness_changed = ui
+            .add(egui::Slider::new(&mut state.box_thickness, 1..=50).text("px"))
+            .changed();
+
         if thickness_changed {
             crop_changed = true;
         }
     });
-    
+
     ui.add_space(8.0);
     ui.separator();
     ui.add_space(4.0);
-    
+
     // JPEG quality slider
     ui.horizontal(|ui| {
         ui.label("JPEG quality:");
-        let quality_changed = ui.add(
-            egui::Slider::new(&mut state.jpeg_quality, 1..=100)
-                .text("%")
-        ).changed();
-        
+        let quality_changed = ui
+            .add(egui::Slider::new(&mut state.jpeg_quality, 1..=100).text("%"))
+            .changed();
+
         if quality_changed && state.selected_input_file.is_some() {
             state.update_selected_output_info();
         }
     });
-    
+
     ui.add_space(4.0);
-    
+
     // Sync pan/zoom checkbox
     ui.checkbox(&mut state.sync_preview_pan_zoom, "Sync preview pan/zoom")
         .on_hover_text("Synchronize pan and zoom across input, threshold, and output previews");
-    
+
     // Recalculate output info if settings changed
     if crop_changed && state.selected_input_file.is_some() {
         state.update_selected_output_info();
@@ -107,7 +115,7 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
     if let Some(ref input_path) = state.selected_input_file {
         ui.separator();
         ui.label("Selected image info:");
-        
+
         // Show input filesize
         match fs::metadata(input_path) {
             Ok(meta) => {
@@ -133,7 +141,7 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
                 ui.label("Output size:");
                 ui.strong(format_size(output_info.estimated_size));
             });
-            
+
             if output_info.was_cropped {
                 ui.horizontal(|ui| {
                     ui.label("Dimensions:");

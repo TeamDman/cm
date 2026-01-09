@@ -4,7 +4,8 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use tracing::warn;
 
 /// A strongly-typed wrapper around the max name length
@@ -27,7 +28,10 @@ impl MaxNameLength {
             if let Ok(v) = envv.trim().parse::<usize>() {
                 return Ok(MaxNameLength(v));
             } else {
-                warn!("Invalid CM_MAX_NAME_LENGTH '{}', falling back to file/default", envv);
+                warn!(
+                    "Invalid CM_MAX_NAME_LENGTH '{}', falling back to file/default",
+                    envv
+                );
             }
         }
 
@@ -38,7 +42,11 @@ impl MaxNameLength {
             if let Ok(v) = s.parse::<usize>() {
                 return Ok(MaxNameLength(v));
             } else {
-                warn!("Invalid {} contents: '{}', resetting to default", path.display(), s);
+                warn!(
+                    "Invalid {} contents: '{}', resetting to default",
+                    path.display(),
+                    s
+                );
             }
         }
 

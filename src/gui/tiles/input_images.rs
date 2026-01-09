@@ -1,8 +1,13 @@
 //! Input images tree tile - shows discovered image files
 
-use crate::gui::state::{AppState, LoadingState};
-use crate::gui::tree_view::{group_files_by_input, show_input_group_with_cache, TreeRenderContext};
-use eframe::egui::{self, ScrollArea, TextureHandle};
+use crate::gui::state::AppState;
+use crate::gui::state::LoadingState;
+use crate::gui::tree_view::TreeRenderContext;
+use crate::gui::tree_view::group_files_by_input;
+use crate::gui::tree_view::show_input_group_with_cache;
+use eframe::egui::ScrollArea;
+use eframe::egui::TextureHandle;
+use eframe::egui::{self};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -20,12 +25,12 @@ pub fn draw_input_images_tile(
         });
         return;
     }
-    
+
     if let LoadingState::Failed(ref error) = state.image_files_loading {
         ui.colored_label(egui::Color32::RED, format!("Error: {}", error));
         return;
     }
-    
+
     if state.image_files.is_empty() {
         ui.label("(no image files found)");
         ui.add_space(8.0);
@@ -37,14 +42,20 @@ pub fn draw_input_images_tile(
     let loading_count = state.images_loading.len();
     let cached_count = state.image_cache.len();
     let total_count = state.image_files.len();
-    
+
     if loading_count > 0 {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label(format!("Loading thumbnails... ({}/{} cached)", cached_count, total_count));
+            ui.label(format!(
+                "Loading thumbnails... ({}/{} cached)",
+                cached_count, total_count
+            ));
         });
     } else {
-        ui.label(format!("Click an image to preview it ({} images):", total_count));
+        ui.label(format!(
+            "Click an image to preview it ({} images):",
+            total_count
+        ));
     }
     ui.separator();
 
@@ -52,7 +63,7 @@ pub fn draw_input_images_tile(
     let grouped = group_files_by_input(&state.input_paths, &state.image_files);
 
     let mut clicked_file: Option<PathBuf> = None;
-    
+
     ScrollArea::both()
         .id_salt("images_scroll")
         .auto_shrink([false, false])
@@ -62,7 +73,7 @@ pub fn draw_input_images_tile(
                 images_loading: &state.images_loading,
                 thumbnail_textures,
             };
-            
+
             for (input_path, relative_files) in &grouped {
                 let result = show_input_group_with_cache(
                     ui,
@@ -76,7 +87,7 @@ pub fn draw_input_images_tile(
                 }
             }
         });
-    
+
     // Handle clicked file after the borrow ends
     if let Some(clicked) = clicked_file {
         state.select_file(clicked);

@@ -2,7 +2,8 @@
 
 use crate::app_home::APP_HOME;
 use crate::gui::state::AppState;
-use eframe::egui::{self, ScrollArea};
+use eframe::egui::ScrollArea;
+use eframe::egui::{self};
 
 /// Draw the rename rules tile UI
 pub fn draw_rename_rules_tile(ui: &mut egui::Ui, state: &mut AppState) {
@@ -46,7 +47,10 @@ pub fn draw_rename_rules_tile(ui: &mut egui::Ui, state: &mut AppState) {
                             rule_changed = true;
                         }
 
-                        if ui.checkbox(&mut rule.case_sensitive, "case sensitive").changed() {
+                        if ui
+                            .checkbox(&mut rule.case_sensitive, "case sensitive")
+                            .changed()
+                        {
                             rule_changed = true;
                         }
 

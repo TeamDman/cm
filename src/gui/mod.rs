@@ -5,11 +5,11 @@ pub mod state;
 mod tiles;
 pub mod tree_view;
 
-use behavior::{CmBehavior, CmPane, create_default_tree};
-use state::AppState;
-
 use crate::app_home::APP_HOME;
 use crate::inputs;
+use behavior::CmBehavior;
+use behavior::CmPane;
+use behavior::create_default_tree;
 use eframe::egui::Align2;
 use eframe::egui::Color32;
 use eframe::egui::Id;
@@ -19,6 +19,7 @@ use eframe::egui::TextStyle;
 use eframe::egui::TextureHandle;
 use eframe::egui::{self};
 use eyre::eyre;
+use state::AppState;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::info;
@@ -97,7 +98,7 @@ impl eframe::App for CmApp {
 
         // Poll background tasks for completions
         self.state.poll_background_tasks();
-        
+
         // Clear textures if output info is being recalculated
         if self.state.output_info_loading {
             self.output_texture = None;
@@ -178,7 +179,7 @@ impl eframe::App for CmApp {
                 self.threshold_pan_zoom.sync_from(&self.output_pan_zoom);
             }
         }
-        
+
         // Clear dirty flags for next frame
         self.input_pan_zoom.dirty = false;
         self.threshold_pan_zoom.dirty = false;
@@ -276,10 +277,10 @@ fn toggle_logs_tile(tree: &mut egui_tiles::Tree<CmPane>, visible: bool) {
         if logs_tile_id.is_none() {
             let logs_id = tree.tiles.insert_pane(CmPane::Logs);
             // Add to root as a new horizontal tile
-            if let Some(root_id) = tree.root() {
-                if let Some(egui_tiles::Tile::Container(container)) = tree.tiles.get_mut(root_id) {
-                    container.add_child(logs_id);
-                }
+            if let Some(root_id) = tree.root()
+                && let Some(egui_tiles::Tile::Container(container)) = tree.tiles.get_mut(root_id)
+            {
+                container.add_child(logs_id);
             }
         }
     } else {

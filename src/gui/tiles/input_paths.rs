@@ -1,7 +1,9 @@
 //! Input paths tile - shows and manages input directories
 
 use crate::gui::state::AppState;
-use eframe::egui::{self, Color32, ScrollArea};
+use eframe::egui::Color32;
+use eframe::egui::ScrollArea;
+use eframe::egui::{self};
 
 /// Draw the input paths tile UI
 pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
@@ -20,7 +22,7 @@ pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
     });
 
     ui.separator();
-    
+
     // Show loading state
     if state.input_paths_loading.is_loading() {
         ui.horizontal(|ui| {
@@ -46,7 +48,7 @@ pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     if state.image_files_loading.is_loading() {
                         ui.spinner();
                     }
-                    
+
                     // Remove button
                     if ui.small_button("✖").clicked() {
                         state.path_to_remove = Some(path.clone());

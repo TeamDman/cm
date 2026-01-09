@@ -9,7 +9,10 @@ pub struct MaxNameLengthShowArgs {}
 
 impl MaxNameLengthShowArgs {
     pub fn invoke(self) -> eyre::Result<()> {
-        println!("Max name length: {}", crate::MAX_NAME_LENGTH.load(Ordering::SeqCst));
+        println!(
+            "Max name length: {}",
+            crate::MAX_NAME_LENGTH.load(Ordering::SeqCst)
+        );
         Ok(())
     }
 }

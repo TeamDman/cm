@@ -1,10 +1,15 @@
 //! Image processing utilities for the CM application
 
 use crate::gui::state::CachedImageInfo;
-use eyre::{Result, eyre};
-use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
+use eyre::Result;
+use eyre::eyre;
+use image::DynamicImage;
+use image::ImageFormat;
+use image::Rgba;
+use image::RgbaImage;
 use std::io::Cursor;
 use std::path::Path;
+use std::path::PathBuf;
 
 /// Maximum preview dimension (width or height)
 const MAX_PREVIEW_SIZE: u32 = 1024;
@@ -37,16 +42,11 @@ pub struct ProcessedImage {
 }
 
 /// Binarization mode for threshold preview
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BinarizationMode {
+    #[default]
     KeepWhite,
     KeepBlack,
-}
-
-impl Default for BinarizationMode {
-    fn default() -> Self {
-        BinarizationMode::KeepWhite
-    }
 }
 
 /// Image processing settings
@@ -83,17 +83,17 @@ fn detect_format_from_path(path: &Path) -> ImageFormat {
 /// Downsample an image for preview while maintaining aspect ratio
 fn downsample_for_preview(img: &DynamicImage) -> DynamicImage {
     let (width, height) = (img.width(), img.height());
-    
+
     // If already small enough, return clone
     if width <= MAX_PREVIEW_SIZE && height <= MAX_PREVIEW_SIZE {
         return img.clone();
     }
-    
+
     // Calculate new dimensions maintaining aspect ratio
     let scale = (MAX_PREVIEW_SIZE as f64 / width.max(height) as f64).min(1.0);
     let new_width = (width as f64 * scale) as u32;
     let new_height = (height as f64 * scale) as u32;
-    
+
     img.resize(new_width, new_height, image::imageops::FilterType::Triangle)
 }
 
@@ -101,42 +101,56 @@ fn downsample_for_preview(img: &DynamicImage) -> DynamicImage {
 pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<ProcessedImage> {
     // Detect original format for output
     let output_format = detect_format_from_path(path);
-    
+
     // Load the image
-    let img = image::open(path)
-        .map_err(|e| eyre!("Failed to open image {}: {}", path.display(), e))?;
-    
+    let img =
+        image::open(path).map_err(|e| eyre!("Failed to open image {}: {}", path.display(), e))?;
+
     let original_width = img.width();
     let original_height = img.height();
-    
+
     // Generate threshold preview using downsampled image for performance
-    let box_thickness = if settings.box_thickness == 0 { 10 } else { settings.box_thickness };
+    let box_thickness = if settings.box_thickness == 0 {
+        10
+    } else {
+        settings.box_thickness
+    };
     let preview_img = downsample_for_preview(&img);
-    let threshold_preview_data = create_threshold_preview(&preview_img, settings.crop_threshold, settings.binarization_mode, box_thickness)?;
-    
+    let threshold_preview_data = create_threshold_preview(
+        &preview_img,
+        settings.crop_threshold,
+        settings.binarization_mode,
+        box_thickness,
+    )?;
+
     // Apply processing steps
     let (processed, was_cropped, crop_bounds) = if settings.crop_to_content {
         let (cropped, bounds) = crop_to_content_with_threshold(&img, settings.crop_threshold);
         let did_crop = cropped.width() != original_width || cropped.height() != original_height;
-        (cropped, did_crop, if did_crop { Some(bounds) } else { None })
+        (
+            cropped,
+            did_crop,
+            if did_crop { Some(bounds) } else { None },
+        )
     } else {
         (img, false, None)
     };
-    
+
     let output_width = processed.width();
     let output_height = processed.height();
-    
+
     // Create downsampled preview for GUI display (always PNG for fast decoding)
     let output_preview_img = downsample_for_preview(&processed);
     let mut output_preview_data = Vec::new();
     let mut preview_cursor = Cursor::new(&mut output_preview_data);
-    output_preview_img.write_to(&mut preview_cursor, ImageFormat::Png)
+    output_preview_img
+        .write_to(&mut preview_cursor, ImageFormat::Png)
         .map_err(|e| eyre!("Failed to encode output preview: {}", e))?;
-    
+
     // Encode full-resolution output using the original format
     let data = encode_image(&processed, output_format, settings.jpeg_quality)?;
     let estimated_size = data.len() as u64;
-    
+
     Ok(ProcessedImage {
         data,
         format: output_format,
@@ -156,19 +170,22 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
 fn encode_image(img: &DynamicImage, format: ImageFormat, jpeg_quality: u8) -> Result<Vec<u8>> {
     let mut data = Vec::new();
     let mut cursor = Cursor::new(&mut data);
-    
+
     match format {
         ImageFormat::Jpeg => {
             // Use JPEG encoder with quality setting
             let quality = if jpeg_quality == 0 { 90 } else { jpeg_quality };
             let rgb = img.to_rgb8();
-            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, quality);
-            encoder.encode(
-                rgb.as_raw(),
-                rgb.width(),
-                rgb.height(),
-                image::ExtendedColorType::Rgb8,
-            ).map_err(|e| eyre!("Failed to encode JPEG: {}", e))?;
+            let mut encoder =
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, quality);
+            encoder
+                .encode(
+                    rgb.as_raw(),
+                    rgb.width(),
+                    rgb.height(),
+                    image::ExtendedColorType::Rgb8,
+                )
+                .map_err(|e| eyre!("Failed to encode JPEG: {}", e))?;
         }
         ImageFormat::WebP => {
             // WebP uses quality-like encoding
@@ -181,7 +198,7 @@ fn encode_image(img: &DynamicImage, format: ImageFormat, jpeg_quality: u8) -> Re
                 .map_err(|e| eyre!("Failed to encode PNG: {}", e))?;
         }
     }
-    
+
     Ok(data)
 }
 
@@ -194,18 +211,19 @@ fn create_threshold_preview(
 ) -> Result<Vec<u8>> {
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
-    
+
     // Sample edge pixels to determine background color
     let background_color = sample_edge_color(&rgba);
-    
+
     // Create binarized image
     let mut binary_img = RgbaImage::new(width, height);
-    
+
     for y in 0..height {
         for x in 0..width {
             let pixel = rgba.get_pixel(x, y);
-            let is_background = is_background_pixel_with_threshold(pixel, &background_color, threshold);
-            
+            let is_background =
+                is_background_pixel_with_threshold(pixel, &background_color, threshold);
+
             // Set pixel color based on mode
             let output_pixel = match mode {
                 BinarizationMode::KeepWhite => {
@@ -223,37 +241,44 @@ fn create_threshold_preview(
                     }
                 }
             };
-            
+
             binary_img.put_pixel(x, y, output_pixel);
         }
     }
-    
+
     // Draw red bounding box if there's content to crop
     let bounds = find_content_bounds(&rgba, &background_color, threshold);
     if let Some((min_x, min_y, max_x, max_y)) = bounds {
-        draw_bounding_box(&mut binary_img, min_x, min_y, max_x, max_y, box_thickness as u32);
+        draw_bounding_box(
+            &mut binary_img,
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+            box_thickness as u32,
+        );
     }
-    
+
     // Encode to PNG
     let mut data = Vec::new();
     let mut cursor = Cursor::new(&mut data);
     DynamicImage::ImageRgba8(binary_img)
         .write_to(&mut cursor, ImageFormat::Png)
         .map_err(|e| eyre!("Failed to encode threshold preview: {}", e))?;
-    
+
     Ok(data)
 }
 
 /// Sample edge pixels to determine the most common background color
 fn sample_edge_color(img: &RgbaImage) -> Rgba<u8> {
     let (width, height) = img.dimensions();
-    
+
     if width == 0 || height == 0 {
         return Rgba([255, 255, 255, 255]);
     }
-    
+
     let mut samples = Vec::new();
-    
+
     // Sample top and bottom edges
     for x in (0..width).step_by((width / 10).max(1) as usize) {
         samples.push(*img.get_pixel(x, 0));
@@ -261,7 +286,7 @@ fn sample_edge_color(img: &RgbaImage) -> Rgba<u8> {
             samples.push(*img.get_pixel(x, height - 1));
         }
     }
-    
+
     // Sample left and right edges
     for y in (0..height).step_by((height / 10).max(1) as usize) {
         samples.push(*img.get_pixel(0, y));
@@ -269,24 +294,24 @@ fn sample_edge_color(img: &RgbaImage) -> Rgba<u8> {
             samples.push(*img.get_pixel(width - 1, y));
         }
     }
-    
+
     // Return the average color (simple approach)
     if samples.is_empty() {
         return Rgba([255, 255, 255, 255]);
     }
-    
+
     let mut r_sum: u64 = 0;
     let mut g_sum: u64 = 0;
     let mut b_sum: u64 = 0;
     let mut a_sum: u64 = 0;
-    
+
     for pixel in &samples {
         r_sum += pixel[0] as u64;
         g_sum += pixel[1] as u64;
         b_sum += pixel[2] as u64;
         a_sum += pixel[3] as u64;
     }
-    
+
     let count = samples.len() as u64;
     Rgba([
         (r_sum / count) as u8,
@@ -306,15 +331,15 @@ fn is_background_pixel_with_threshold(
     if pixel[3] < 10 {
         return true;
     }
-    
+
     // Calculate color distance from background
     let dr = (pixel[0] as i32 - background[0] as i32).abs();
     let dg = (pixel[1] as i32 - background[1] as i32).abs();
     let db = (pixel[2] as i32 - background[2] as i32).abs();
-    
+
     // Use Euclidean distance
     let distance = ((dr * dr + dg * dg + db * db) as f64).sqrt();
-    
+
     // Compare against threshold
     distance < threshold as f64
 }
@@ -328,11 +353,11 @@ fn find_content_bounds(
     threshold: u8,
 ) -> Option<(u32, u32, u32, u32)> {
     let (width, height) = img.dimensions();
-    
+
     if width == 0 || height == 0 {
         return None;
     }
-    
+
     // Find min_y: scan from top down until we find a row with content
     let mut min_y = 0u32;
     'top: for y in 0..height {
@@ -345,12 +370,12 @@ fn find_content_bounds(
         }
         min_y = y + 1;
     }
-    
+
     // If we scanned all rows and found nothing, no content
     if min_y >= height {
         return None;
     }
-    
+
     // Find max_y: scan from bottom up until we find a row with content
     let mut max_y = height - 1;
     'bottom: for y in (min_y..height).rev() {
@@ -362,7 +387,7 @@ fn find_content_bounds(
             }
         }
     }
-    
+
     // Find min_x: scan from left to right, but only in the y range we know has content
     let mut min_x = 0u32;
     'left: for x in 0..width {
@@ -375,7 +400,7 @@ fn find_content_bounds(
         }
         min_x = x + 1;
     }
-    
+
     // Find max_x: scan from right to left, but only in the y range we know has content
     let mut max_x = width - 1;
     'right: for x in (min_x..width).rev() {
@@ -387,16 +412,23 @@ fn find_content_bounds(
             }
         }
     }
-    
+
     Some((min_x, min_y, max_x, max_y))
 }
 
 /// Draw a red bounding box on an image
-fn draw_bounding_box(img: &mut RgbaImage, min_x: u32, min_y: u32, max_x: u32, max_y: u32, thickness: u32) {
+fn draw_bounding_box(
+    img: &mut RgbaImage,
+    min_x: u32,
+    min_y: u32,
+    max_x: u32,
+    max_y: u32,
+    thickness: u32,
+) {
     let red = Rgba([255, 0, 0, 255]);
-    
+
     let (width, height) = img.dimensions();
-    
+
     // Draw top and bottom edges
     for x in min_x..=max_x {
         if x < width {
@@ -410,7 +442,7 @@ fn draw_bounding_box(img: &mut RgbaImage, min_x: u32, min_y: u32, max_x: u32, ma
             }
         }
     }
-    
+
     // Draw left and right edges
     for y in min_y..=max_y {
         if y < height {
@@ -433,21 +465,26 @@ pub fn crop_to_content_with_threshold(
 ) -> (DynamicImage, (u32, u32, u32, u32)) {
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
-    
+
     if width == 0 || height == 0 {
         return (img.clone(), (0, 0, width, height));
     }
-    
+
     // Sample edge to determine background color
     let background_color = sample_edge_color(&rgba);
-    
+
     // Find bounds of non-background content
-    if let Some((min_x, min_y, max_x, max_y)) = find_content_bounds(&rgba, &background_color, threshold) {
+    if let Some((min_x, min_y, max_x, max_y)) =
+        find_content_bounds(&rgba, &background_color, threshold)
+    {
         // Crop to the content bounds
         let crop_width = max_x - min_x + 1;
         let crop_height = max_y - min_y + 1;
-        
-        (img.crop_imm(min_x, min_y, crop_width, crop_height), (min_x, min_y, crop_width, crop_height))
+
+        (
+            img.crop_imm(min_x, min_y, crop_width, crop_height),
+            (min_x, min_y, crop_width, crop_height),
+        )
     } else {
         // No content found, return original
         (img.clone(), (0, 0, width, height))
@@ -458,17 +495,17 @@ pub fn crop_to_content_with_threshold(
 pub fn crop_to_content(img: &DynamicImage) -> DynamicImage {
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
-    
+
     if width == 0 || height == 0 {
         return img.clone();
     }
-    
+
     // Find bounds of non-background content
     let mut min_x = width;
     let mut min_y = height;
     let mut max_x = 0u32;
     let mut max_y = 0u32;
-    
+
     for y in 0..height {
         for x in 0..width {
             let pixel = rgba.get_pixel(x, y);
@@ -480,28 +517,28 @@ pub fn crop_to_content(img: &DynamicImage) -> DynamicImage {
             }
         }
     }
-    
+
     // If the whole image is background, return original
     if max_x < min_x || max_y < min_y {
         return img.clone();
     }
-    
+
     // Crop to the content bounds
     let crop_width = max_x - min_x + 1;
     let crop_height = max_y - min_y + 1;
-    
+
     img.crop_imm(min_x, min_y, crop_width, crop_height)
 }
 
 /// Check if a pixel is considered "background" (white or transparent)
 fn is_background_pixel(pixel: &image::Rgba<u8>) -> bool {
     let [r, g, b, a] = pixel.0;
-    
+
     // Transparent pixels are background
     if a < 10 {
         return true;
     }
-    
+
     // Near-white pixels are background (with generous tolerance for JPEG artifacts)
     // Using 240 to catch off-white pixels from compression/anti-aliasing
     let threshold = 240;
@@ -509,17 +546,20 @@ fn is_background_pixel(pixel: &image::Rgba<u8>) -> bool {
 }
 
 /// Get the output directory for an input path (appends -output to directory name)
-pub fn get_output_dir(input_path: &Path) -> std::path::PathBuf {
-    if let Some(parent) = input_path.parent() {
-        if let Some(name) = input_path.file_name() {
-            let output_name = format!("{}-output", name.to_string_lossy());
-            return parent.join(output_name);
-        }
+pub fn get_output_dir(input_path: &Path) -> PathBuf {
+    if let Some(parent) = input_path.parent()
+        && let Some(name) = input_path.file_name()
+    {
+        let output_name = format!("{}-output", name.to_string_lossy());
+        return parent.join(output_name);
     }
     // Fallback
     input_path.with_file_name(format!(
         "{}-output",
-        input_path.file_name().map(|s| s.to_string_lossy()).unwrap_or_default()
+        input_path
+            .file_name()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default()
     ))
 }
 
@@ -528,28 +568,28 @@ pub fn get_output_path(
     file_path: &Path,
     input_root: &Path,
     renamed_filename: &str,
-) -> Option<std::path::PathBuf> {
+) -> Option<PathBuf> {
     // Get relative path from input root
     let relative = file_path.strip_prefix(input_root).ok()?;
-    
+
     // Get output root directory
     let output_root = get_output_dir(input_root);
-    
+
     // Build output path: output_root + relative_dir + renamed_filename
     let mut output_path = output_root;
     if let Some(parent) = relative.parent() {
         output_path = output_path.join(parent);
     }
     output_path = output_path.join(renamed_filename);
-    
+
     Some(output_path)
 }
-
 /// Process and write all images
+#[allow(clippy::type_complexity)]
 pub fn process_all_images(
-    input_files: &[std::path::PathBuf],
-    renamed_files: &[std::path::PathBuf],
-    input_roots: &[std::path::PathBuf],
+    input_files: &[PathBuf],
+    renamed_files: &[PathBuf],
+    input_roots: &[PathBuf],
     settings: &ProcessingSettings,
     progress_callback: Option<&dyn Fn(usize, usize, &Path)>,
 ) -> Result<ProcessAllResult> {
@@ -557,14 +597,15 @@ pub fn process_all_images(
     let skipped_count = 0;
     let mut error_count = 0;
     let mut errors: Vec<String> = Vec::new();
-    
+
     let total = input_files.len();
-    
-    for (i, (input_file, renamed_file)) in input_files.iter().zip(renamed_files.iter()).enumerate() {
+
+    for (i, (input_file, renamed_file)) in input_files.iter().zip(renamed_files.iter()).enumerate()
+    {
         if let Some(cb) = progress_callback {
             cb(i + 1, total, input_file);
         }
-        
+
         // Find which input root this file belongs to
         let input_root = input_roots.iter().find(|r| input_file.starts_with(r));
         let Some(input_root) = input_root else {
@@ -572,29 +613,36 @@ pub fn process_all_images(
             error_count += 1;
             continue;
         };
-        
+
         // Get the renamed filename
         let renamed_name = renamed_file
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
-        
+
         // Calculate output path
         let Some(output_path) = get_output_path(input_file, input_root, &renamed_name) else {
-            errors.push(format!("Could not calculate output path for: {}", input_file.display()));
+            errors.push(format!(
+                "Could not calculate output path for: {}",
+                input_file.display()
+            ));
             error_count += 1;
             continue;
         };
-        
+
         // Create output directory if needed
-        if let Some(parent) = output_path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                errors.push(format!("Failed to create directory {}: {}", parent.display(), e));
-                error_count += 1;
-                continue;
-            }
+        if let Some(parent) = output_path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            errors.push(format!(
+                "Failed to create directory {}: {}",
+                parent.display(),
+                e
+            ));
+            error_count += 1;
+            continue;
         }
-        
+
         // Process the image
         match process_image(input_file, settings) {
             Ok(processed) => {
@@ -612,7 +660,7 @@ pub fn process_all_images(
             }
         }
     }
-    
+
     Ok(ProcessAllResult {
         processed_count,
         skipped_count,
@@ -636,14 +684,14 @@ pub fn load_image_metadata(path: &Path, thumbnail_size: u32) -> Result<CachedIma
     let file_size = std::fs::metadata(path)
         .map_err(|e| eyre!("Failed to get file metadata: {}", e))?
         .len();
-    
+
     // Load the image
-    let img = image::open(path)
-        .map_err(|e| eyre!("Failed to open image {}: {}", path.display(), e))?;
-    
+    let img =
+        image::open(path).map_err(|e| eyre!("Failed to open image {}: {}", path.display(), e))?;
+
     let width = img.width();
     let height = img.height();
-    
+
     // Generate thumbnail
     let thumbnail = if width <= thumbnail_size && height <= thumbnail_size {
         img
@@ -653,13 +701,14 @@ pub fn load_image_metadata(path: &Path, thumbnail_size: u32) -> Result<CachedIma
         let new_height = (height as f64 * scale) as u32;
         img.resize(new_width, new_height, image::imageops::FilterType::Triangle)
     };
-    
+
     // Encode thumbnail as PNG
     let mut thumbnail_data = Vec::new();
     let mut cursor = Cursor::new(&mut thumbnail_data);
-    thumbnail.write_to(&mut cursor, ImageFormat::Png)
+    thumbnail
+        .write_to(&mut cursor, ImageFormat::Png)
         .map_err(|e| eyre!("Failed to encode thumbnail: {}", e))?;
-    
+
     Ok(CachedImageInfo {
         width,
         height,

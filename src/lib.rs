@@ -6,21 +6,20 @@ pub mod cli;
 pub mod gui;
 pub mod image_processing;
 pub mod inputs;
+pub mod max_name_length;
 pub mod rename_rules;
 pub mod session_id;
 pub mod site_id;
-pub mod max_name_length;
 pub mod tracing;
 pub mod user_id;
 
 use crate::cli::Cli;
 use clap::CommandFactory;
 use clap::FromArgMatches;
+pub use max_name_length::*;
 pub use session_id::*;
 pub use site_id::*;
-pub use max_name_length::*;
 pub use user_id::*;
-
 
 // Entrypoint matching the pattern in teamy-rust-cli
 pub fn main() -> eyre::Result<()> {

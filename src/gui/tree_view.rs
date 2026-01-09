@@ -1,12 +1,18 @@
 //! Tree view helper functions for displaying file hierarchies
 
 use crate::gui::state::CachedImageInfo;
-use eframe::egui::{self, Color32, Sense, TextureHandle, TextureOptions};
+use eframe::egui::Color32;
+use eframe::egui::Sense;
+use eframe::egui::TextureHandle;
+use eframe::egui::TextureOptions;
+use eframe::egui::{self};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(windows)]
 use teamy_windows::shell::select::open_folder_and_select_items;
 use tracing::debug;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 
 /// A simple tree node for displaying paths hierarchically
 #[derive(Default)]
@@ -79,14 +85,30 @@ pub fn show_tree_children_with_cache(
     // We need to handle ctx mutability carefully
     if let Some(ctx) = ctx {
         for (child_name, child_node) in sorted_children {
-            let child_result = show_tree_node_with_cache(ui, child_name, child_node, depth, None, selected_path, Some(ctx));
+            let child_result = show_tree_node_with_cache(
+                ui,
+                child_name,
+                child_node,
+                depth,
+                None,
+                selected_path,
+                Some(ctx),
+            );
             if child_result.clicked_path.is_some() {
                 result = child_result;
             }
         }
     } else {
         for (child_name, child_node) in sorted_children {
-            let child_result = show_tree_node_with_cache(ui, child_name, child_node, depth, None, selected_path, None);
+            let child_result = show_tree_node_with_cache(
+                ui,
+                child_name,
+                child_node,
+                depth,
+                None,
+                selected_path,
+                None,
+            );
             if child_result.clicked_path.is_some() {
                 result = child_result;
             }
@@ -125,17 +147,21 @@ pub fn show_tree_node_with_cache(
         ui.horizontal(|ui| {
             ui.add_space(depth as f32 * 16.0);
             let color = file_color.unwrap_or(Color32::LIGHT_GREEN);
-            
+
             // Check if this node is selected
-            let is_selected = node.full_path.as_ref().is_some_and(|p| Some(p) == selected_path);
-            
+            let is_selected = node
+                .full_path
+                .as_ref()
+                .is_some_and(|p| Some(p) == selected_path);
+
             // Build the label text with image info if available
             let (label_text, is_loading, cached_info) = if let Some(ref path) = node.full_path {
                 if let Some(ref ctx) = ctx {
                     if let Some(info) = ctx.image_cache.get(path) {
                         // Show dimensions and size
                         let size_str = format_size(info.file_size);
-                        let label = format!("🖼 {} ({} {}x{})", name, size_str, info.width, info.height);
+                        let label =
+                            format!("🖼 {} ({} {}x{})", name, size_str, info.width, info.height);
                         (label, false, Some(info.clone()))
                     } else if ctx.images_loading.contains(path) {
                         (format!("⏳ {}", name), true, None)
@@ -148,7 +174,7 @@ pub fn show_tree_node_with_cache(
             } else {
                 (format!("🖼 {}", name), false, None)
             };
-            
+
             let response = if is_selected {
                 // Highlighted when selected
                 ui.add(
@@ -176,31 +202,38 @@ pub fn show_tree_node_with_cache(
                 let hover_response = if let Some(info) = cached_info {
                     if let Some(ctx) = ctx {
                         // Show image tooltip with thumbnail
-                        let texture = ctx.thumbnail_textures.entry(path.clone()).or_insert_with(|| {
-                            // Load thumbnail texture
-                            if let Ok(image) = image::load_from_memory(&info.thumbnail_data) {
-                                let size = [image.width() as _, image.height() as _];
-                                let rgba = image.to_rgba8();
-                                let pixels = rgba.as_flat_samples();
-                                let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                                    size,
-                                    pixels.as_slice(),
-                                );
-                                ui.ctx().load_texture(
-                                    format!("thumb_{}", path.display()),
-                                    color_image,
-                                    TextureOptions::default(),
-                                )
-                            } else {
-                                // Fallback: 1x1 transparent texture
-                                ui.ctx().load_texture(
-                                    "thumb_fallback",
-                                    egui::ColorImage::new([1, 1], vec![Color32::TRANSPARENT]),
-                                    TextureOptions::default(),
-                                )
-                            }
-                        });
-                        
+                        let texture =
+                            ctx.thumbnail_textures
+                                .entry(path.clone())
+                                .or_insert_with(|| {
+                                    // Load thumbnail texture
+                                    if let Ok(image) = image::load_from_memory(&info.thumbnail_data)
+                                    {
+                                        let size = [image.width() as _, image.height() as _];
+                                        let rgba = image.to_rgba8();
+                                        let pixels = rgba.as_flat_samples();
+                                        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                            size,
+                                            pixels.as_slice(),
+                                        );
+                                        ui.ctx().load_texture(
+                                            format!("thumb_{}", path.display()),
+                                            color_image,
+                                            TextureOptions::default(),
+                                        )
+                                    } else {
+                                        // Fallback: 1x1 transparent texture
+                                        ui.ctx().load_texture(
+                                            "thumb_fallback",
+                                            egui::ColorImage::new(
+                                                [1, 1],
+                                                vec![Color32::TRANSPARENT],
+                                            ),
+                                            TextureOptions::default(),
+                                        )
+                                    }
+                                });
+
                         response.on_hover_ui(|ui| {
                             ui.vertical(|ui| {
                                 ui.image((texture.id(), texture.size_vec2()));
@@ -385,7 +418,10 @@ pub fn group_files_with_renames(
                 renamed.strip_prefix(input_path),
             ) {
                 let orig_name = original.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                let new_name = new_relative.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                let new_name = new_relative
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
                 let was_renamed = orig_name != new_name;
                 let is_too_long = new_name.len() > max_name_length;
 
@@ -489,7 +525,10 @@ pub fn show_rename_tree_node(
             };
 
             // Check if this node is selected (compare against original input path)
-            let is_selected = node.original_input_path.as_ref().is_some_and(|p| Some(p) == selected_path);
+            let is_selected = node
+                .original_input_path
+                .as_ref()
+                .is_some_and(|p| Some(p) == selected_path);
 
             let label_text = format!("🖼 {name}");
             let response = if is_selected {
@@ -518,7 +557,11 @@ pub fn show_rename_tree_node(
                 let response = response.on_hover_text(tooltip);
 
                 // Context menu to open the file in Explorer/Finder (prefer original input path)
-                if let Some(open_path) = node.original_input_path.as_ref().or_else(|| node.full_path.as_ref()) {
+                if let Some(open_path) = node
+                    .original_input_path
+                    .as_ref()
+                    .or(node.full_path.as_ref())
+                {
                     response.context_menu(|ui| {
                         if ui.button("Open in explorer").clicked() {
                             open_in_explorer(open_path);
@@ -564,7 +607,14 @@ pub fn show_rename_group(
     max_name_length: usize,
     selected_path: Option<&PathBuf>,
 ) -> TreeResult {
-    show_rename_group_with_output_path(ui, input_path, input_path, files, max_name_length, selected_path)
+    show_rename_group_with_output_path(
+        ui,
+        input_path,
+        input_path,
+        files,
+        max_name_length,
+        selected_path,
+    )
 }
 
 /// Show a group of renamed files with a custom output path display
@@ -590,17 +640,16 @@ pub fn show_rename_group_with_output_path(
 
     let renamed_count = files.iter().filter(|f| f.was_renamed).count();
     let too_long_count = files.iter().filter(|f| f.is_too_long).count();
-    
-    let mut header_text = format!(
-        "📁 {} ({} files",
-        display_name,
-        files.len(),
-    );
+
+    let mut header_text = format!("📁 {} ({} files", display_name, files.len(),);
     if renamed_count > 0 {
         header_text.push_str(&format!(", {} renamed", renamed_count));
     }
     if too_long_count > 0 {
-        header_text.push_str(&format!(", {} too long (>{} chars)", too_long_count, max_name_length));
+        header_text.push_str(&format!(
+            ", {} too long (>{} chars)",
+            too_long_count, max_name_length
+        ));
     }
     header_text.push(')');
 

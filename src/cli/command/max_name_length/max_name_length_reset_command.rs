@@ -11,7 +11,10 @@ pub struct MaxNameLengthResetArgs {}
 impl MaxNameLengthResetArgs {
     pub fn invoke(self) -> eyre::Result<()> {
         MaxNameLength::set_to(MaxNameLength::DEFAULT)?;
-        println!("Reset max name length to default: {}", MaxNameLength::DEFAULT);
+        println!(
+            "Reset max name length to default: {}",
+            MaxNameLength::DEFAULT
+        );
         Ok(())
     }
 }
