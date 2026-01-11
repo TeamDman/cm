@@ -1,8 +1,7 @@
 use crate::cli::command::search::search_command::OutputFormat;
 use crate::cli::command::search::search_command::SearchArgs;
 use crate::gui::state::AppState;
-use chrono::DateTime;
-use chrono::Local;
+use crate::gui::state::BackgroundMessage;
 use eframe::egui::Button;
 use eframe::egui::RichText;
 use eframe::egui::ScrollArea;
@@ -12,27 +11,6 @@ use facet_pretty::PrettyPrinter;
 use regex::Regex;
 use std::path::Path;
 use tokio::sync::mpsc::UnboundedSender;
-use crate::gui::state::BackgroundMessage;
-
-#[derive(Debug)]
-pub enum SearchResultDisplay {
-    None,
-    SomeResults(String),
-    NoResults(DateTime<Local>),
-}
-impl core::fmt::Display for SearchResultDisplay {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            SearchResultDisplay::None => write!(f, ""),
-            SearchResultDisplay::SomeResults(s) => write!(f, "{}", s),
-            SearchResultDisplay::NoResults(when) => write!(
-                f,
-                "No results found (as of {})",
-                when.format("%Y-%m-%d %H:%M:%S")
-            ),
-        }
-    }
-}
 
 /// Suggest search args given a filename.
 /// If a six-digit SKU is found (\b(\d{6})\b) suggest a SKU search, otherwise
@@ -83,31 +61,21 @@ fn suggest_search(filename: &str) -> SearchArgs {
 fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs) {
     tokio::spawn(async move {
         match args.search().await {
-            Ok(res) => match res.results {
-                None => {
-                    let _ = tx.send(BackgroundMessage::ProductSearchResult {
-                        result_display: SearchResultDisplay::NoResults(Local::now()),
-                        error: None,
-                    });
-                }
-                Some(results) if results.is_empty() => {
-                    let _ = tx.send(BackgroundMessage::ProductSearchResult {
-                        result_display: SearchResultDisplay::NoResults(Local::now()),
-                        error: None,
-                    });
-                }
-                Some(results) => {
-                    let pretty = facet_json::to_string_pretty(&results)
-                        .unwrap_or_else(|_error| PrettyPrinter::new().with_colors(false).format(&results));
-                    let _ = tx.send(BackgroundMessage::ProductSearchResult {
-                        result_display: SearchResultDisplay::SomeResults(pretty.to_string()),
-                        error: None,
-                    });
-                }
-            },
+            Ok(res) => {
+                // Prettify once on the background thread and send both the parsed struct and the prettified string
+                // Format as json first, fallback to facet_pretty if that fails
+                let pretty = facet_json::to_string_pretty(&res.results)
+                    .unwrap_or(PrettyPrinter::new().with_colors(false).format(&res.results));
+                let _ = tx.send(BackgroundMessage::ProductSearchResult {
+                    result: Some(res),
+                    pretty: Some(pretty),
+                    error: None,
+                });
+            }
             Err(e) => {
                 let _ = tx.send(BackgroundMessage::ProductSearchResult {
-                    result_display: SearchResultDisplay::None,
+                    result: None,
+                    pretty: None,
                     error: Some(format!("Search failed: {}", e)),
                 });
             }
@@ -116,16 +84,64 @@ fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs
 }
 
 pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
-    let text = state.product_search_result_display.to_string();
+    // Keep a cloned copy of the prettified JSON for read-only display
+    let pretty_text = state.product_search_result_pretty.clone();
+
     ui.vertical(|ui| {
         ui.label("Query:");
-        ui.add(TextEdit::singleline(&mut state.product_search_query).desired_width(200.0));
+        let query_resp =
+            ui.add(TextEdit::singleline(&mut state.product_search_query).desired_width(200.0));
+        // Typing while suggestion is active disables the suggestion
+        if query_resp.changed() && state.product_search_use_suggestion {
+            state.product_search_use_suggestion = false;
+        }
+        // Submit on Enter
+        if query_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            let query = state.product_search_query.clone();
+            let sku = if state.product_search_sku.is_empty() {
+                None
+            } else {
+                Some(state.product_search_sku.clone())
+            };
+            let tx = state.background_sender.clone();
+            let args = SearchArgs {
+                query: if query.is_empty() { None } else { Some(query) },
+                sku,
+                no_cache: true,
+                output: OutputFormat::Json,
+            };
+            spawn_product_search(tx, args);
+        }
+
         ui.label("SKU:");
-        ui.add(TextEdit::singleline(&mut state.product_search_sku).desired_width(120.0));
+        let sku_resp =
+            ui.add(TextEdit::singleline(&mut state.product_search_sku).desired_width(120.0));
+        if sku_resp.changed() && state.product_search_use_suggestion {
+            state.product_search_use_suggestion = false;
+        }
+        if sku_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            let query = state.product_search_query.clone();
+            let sku = if state.product_search_sku.is_empty() {
+                None
+            } else {
+                Some(state.product_search_sku.clone())
+            };
+            let tx = state.background_sender.clone();
+            let args = SearchArgs {
+                query: if query.is_empty() { None } else { Some(query) },
+                sku,
+                no_cache: true,
+                output: OutputFormat::Json,
+            };
+            spawn_product_search(tx, args);
+        }
 
         // Show suggested query for the selected item, if any
         if let Some(ref selected_path) = state.selected_input_file {
-            if let Some(filename) = selected_path.file_name().map(|s| s.to_string_lossy().to_string()) {
+            if let Some(filename) = selected_path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+            {
                 let suggestion = suggest_search(&filename);
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Suggested:").strong());
@@ -135,10 +151,19 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                         ui.label(q);
                     }
 
-                    if ui.small_button("Run").clicked() {
-                        let tx = state.background_sender.clone();
-                        let args = suggestion.clone();
-                        spawn_product_search(tx, args);
+                    // Checkbox to enable/disable using the suggested values; when checked, populate fields
+                    if ui
+                        .checkbox(&mut state.product_search_use_suggestion, "Use suggested")
+                        .changed()
+                    {
+                        if state.product_search_use_suggestion {
+                            if let Some(s) = &suggestion.sku {
+                                state.product_search_sku = s.clone();
+                            }
+                            if let Some(q) = &suggestion.query {
+                                state.product_search_query = q.clone();
+                            }
+                        }
                     }
                 });
             }
@@ -162,29 +187,54 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
             };
             spawn_product_search(tx, args);
         }
+
         ui.add_space(6.0);
 
         if ui.button("Copy").clicked() {
-            ui.ctx().copy_text(text.clone());
+            ui.ctx().copy_text(pretty_text.clone());
         }
 
-        ui.label(RichText::new("Result:").strong());
+        ui.label(RichText::new("Pretty results:").strong());
 
         // Height left in this column:
         let remaining = ui.available_size_before_wrap().y;
 
-        // Make a child with exactly the remaining height
+        // Make a child with exactly the remaining height and show both a pretty listing and an expandable raw text area
         egui::Frame::default().show(ui, |ui| {
             ui.set_min_height(remaining);
             ui.set_max_height(remaining);
 
             ScrollArea::vertical().show(ui, |ui| {
-                ui.add(
-                    TextEdit::multiline(&mut text.as_str()) // pass &mut &str to make read-only but still selectable
-                        .code_editor()
-                        .desired_rows(0) // let height be driven by the container
-                        .desired_width(f32::INFINITY),
-                );
+                // Pretty listing: name and price per item
+                if let Some(ref raw) = state.product_search_result_raw {
+                    if let Some(results) = &raw.results {
+                        for item in results {
+                            let name = item.name.as_deref().unwrap_or("<no name>");
+                            let price =
+                                item.price.as_ref().map(|p| p.0.clone()).unwrap_or_default();
+                            ui.horizontal(|ui| {
+                                ui.label(name);
+                                ui.add_space(6.0);
+                                ui.label(RichText::new(price).monospace());
+                            });
+                        }
+                    } else {
+                        ui.label("No results");
+                    }
+                } else {
+                    ui.label("No results");
+                }
+
+                // Raw prettified JSON in an expando
+                egui::CollapsingHeader::new("Raw response").show(ui, |ui| {
+                    let text = pretty_text.clone();
+                    ui.add(
+                        TextEdit::multiline(&mut text.as_str())
+                            .code_editor()
+                            .desired_rows(10)
+                            .desired_width(f32::INFINITY),
+                    );
+                });
             });
         });
     });

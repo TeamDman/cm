@@ -2,8 +2,8 @@
 
 use crate::MAX_NAME_LENGTH;
 use crate::app_home::APP_HOME;
-use crate::gui::tiles::SearchResultDisplay;
-use crate::image_processing::BinarizationMode;
+use crate::cli::command::search::search_result_ok::SearchResultOk;
+use crate::image_processing::BinarizationMode; 
 use crate::image_processing::ProcessingSettings;
 use crate::image_processing::get_output_path;
 use crate::image_processing::{self};
@@ -114,8 +114,14 @@ pub struct AppState {
     pub product_search_query: String,
     /// Product search tile: SKU string
     pub product_search_sku: String,
-    /// Product search tile: result JSON (pretty-printed)
-    pub product_search_result_display: SearchResultDisplay,
+    /// Whether to auto-populate query/sku from the suggested values
+    pub product_search_use_suggestion: bool,
+    /// Product search tile: parsed search result (struct), if any
+    pub product_search_result_raw: Option<SearchResultOk>,
+    /// Product search tile: result JSON (pretty-printed) stored to avoid re-prettifying
+    pub product_search_result_pretty: String,
+    /// Whether the raw pretty JSON is expanded
+    pub product_search_show_raw: bool,
     /// Sender for background tasks
     pub background_sender: UnboundedSender<BackgroundMessage>,
     /// Receiver for background task results
@@ -181,9 +187,10 @@ pub enum BackgroundMessage {
         success: bool,
         error: Option<String>,
     },
-    /// Product search result (JSON) from Searchspring
+    /// Product search result (parsed struct and prettified JSON) from Searchspring
     ProductSearchResult {
-        result_display: SearchResultDisplay,
+        result: Option<SearchResultOk>,
+        pretty: Option<String>,
         error: Option<String>,
     },
 }
@@ -222,7 +229,10 @@ impl Default for AppState {
             images_loading: HashSet::new(),
             product_search_query: String::new(),
             product_search_sku: String::new(),
-            product_search_result_display: SearchResultDisplay::None,
+            product_search_use_suggestion: true,
+            product_search_result_raw: None,
+            product_search_result_pretty: String::new(),
+            product_search_show_raw: false,
             background_sender,
             background_receiver,
         }
@@ -813,15 +823,14 @@ impl AppState {
                 BackgroundMessage::ImageCacheError { path } => {
                     self.images_loading.remove(&path);
                 }
-                BackgroundMessage::ProductSearchResult {
-                    result_display,
-                    error,
-                } => {
+                BackgroundMessage::ProductSearchResult { result, pretty, error } => {
                     if let Some(err) = error {
                         error!("Product search failed: {}", err);
-                        self.product_search_result_display = SearchResultDisplay::None;
+                        self.product_search_result_raw = None;
+                        self.product_search_result_pretty.clear();
                     } else {
-                        self.product_search_result_display = result_display;
+                        self.product_search_result_raw = result;
+                        self.product_search_result_pretty = pretty.unwrap_or_default();
                     }
                 }
                 BackgroundMessage::ProcessSelectedComplete { success, error } => {
