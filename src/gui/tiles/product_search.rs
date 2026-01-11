@@ -2,6 +2,7 @@ use crate::cli::command::search::search_command::OutputFormat;
 use crate::cli::command::search::search_command::SearchArgs;
 use crate::gui::state::AppState;
 use crate::gui::state::BackgroundMessage;
+use chrono::Local;
 use eframe::egui::Button;
 use eframe::egui::RichText;
 use eframe::egui::ScrollArea;
@@ -14,10 +15,16 @@ use tokio::sync::mpsc::UnboundedSender;
 
 /// Suggest search args given a filename.
 /// If a six-digit SKU is found (\b(\d{6})\b) suggest a SKU search, otherwise
-/// suggest a query formed by replacing hyphens with spaces and stripping numbers.
+/// suggest a query formed by replacing hyphens with spaces, inserting spaces
+/// before camel-case boundaries (but not inside ALL-CAPS), stripping numbers,
+/// and omitting any single-character tokens.
 fn suggest_search(filename: &str) -> SearchArgs {
     let re_sku = Regex::new(r"\b(\d{6})\b").unwrap();
     let re_digits = Regex::new(r"\d+").unwrap();
+    // Insert spaces for transitions like "HTMLParser" -> "HTML Parser"
+    let re_camel_acronym = Regex::new(r"([A-Z]+)([A-Z][a-z])").unwrap();
+    // Insert spaces for transitions like "forestGreen" -> "forest Green"
+    let re_camel = Regex::new(r"([a-z0-9])([A-Z])").unwrap();
 
     // Use file stem (strip extension) when possible
     let stem = Path::new(filename)
@@ -35,11 +42,23 @@ fn suggest_search(filename: &str) -> SearchArgs {
         };
     }
 
+    // Replace hyphens/underscores with spaces first
     let with_spaces = stem.replace('-', " ").replace("_", " ");
-    let stripped = re_digits.replace_all(&with_spaces, "").to_string();
-    // Collapse whitespace and trim
+
+    // Insert spaces for camel/pascal boundaries. Do the acronym rule first so
+    // ALL-CAPS words aren't split internally ("ALL" stays "ALL").
+    let with_caps = re_camel_acronym
+        .replace_all(&with_spaces, "$1 $2")
+        .to_string();
+    let with_caps = re_camel.replace_all(&with_caps, "$1 $2").to_string();
+
+    // Strip digits
+    let stripped = re_digits.replace_all(&with_caps, "").to_string();
+
+    // Collapse whitespace, trim and remove any single-character tokens
     let suggestion = stripped
         .split_whitespace()
+        .filter(|s| s.chars().count() > 1)
         .collect::<Vec<_>>()
         .join(" ")
         .trim()
@@ -70,6 +89,7 @@ fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs
                     result: Some(res),
                     pretty: Some(pretty),
                     error: None,
+                    received_at: Local::now(),
                 });
             }
             Err(e) => {
@@ -77,6 +97,7 @@ fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs
                     result: None,
                     pretty: None,
                     error: Some(format!("Search failed: {}", e)),
+                    received_at: Local::now(),
                 });
             }
         }
@@ -90,13 +111,19 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.vertical(|ui| {
         ui.label("Query:");
         let query_resp =
-            ui.add(TextEdit::singleline(&mut state.product_search_query).desired_width(200.0));
+            ui.add(TextEdit::singleline(&mut state.product_search_query).desired_width(f32::MAX));
         // Typing while suggestion is active disables the suggestion
         if query_resp.changed() && state.product_search_use_suggestion {
             state.product_search_use_suggestion = false;
         }
         // Submit on Enter
         if query_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            // Clear previous results so UI doesn't appear stale while waiting
+            state.product_search_result_raw = None;
+            state.product_search_result_pretty.clear();
+            state.product_search_last_response = None;
+            state.product_search_show_raw = false;
+
             let query = state.product_search_query.clone();
             let sku = if state.product_search_sku.is_empty() {
                 None
@@ -120,6 +147,12 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
             state.product_search_use_suggestion = false;
         }
         if sku_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            // Clear previous results so UI doesn't appear stale while waiting
+            state.product_search_result_raw = None;
+            state.product_search_result_pretty.clear();
+            state.product_search_last_response = None;
+            state.product_search_show_raw = false;
+
             let query = state.product_search_query.clone();
             let sku = if state.product_search_sku.is_empty() {
                 None
@@ -151,7 +184,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                         ui.label(q);
                     }
 
-                    // Checkbox to enable/disable using the suggested values; when checked, populate fields
+                    // Checkbox to enable/disable using the suggested values
                     if ui
                         .checkbox(&mut state.product_search_use_suggestion, "Use suggested")
                         .changed()
@@ -165,11 +198,37 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                             }
                         }
                     }
+
+                    // Keep fields synced to the latest suggestion while the option is active
+                    if state.product_search_use_suggestion {
+                        if let Some(s) = &suggestion.sku {
+                            state.product_search_sku = s.clone();
+                        } else {
+                            state.product_search_sku.clear();
+                        }
+                        if let Some(q) = &suggestion.query {
+                            state.product_search_query = q.clone();
+                        } else {
+                            state.product_search_query.clear();
+                        }
+                    }
                 });
+            } else {
+                // No filename extractable -> disable suggestion
+                state.product_search_use_suggestion = false;
             }
+        } else {
+            // No selection -> disable suggestion
+            state.product_search_use_suggestion = false;
         }
 
         if ui.add(Button::new("Submit")).clicked() {
+            // Clear previous results so UI doesn't appear stale while waiting
+            state.product_search_result_raw = None;
+            state.product_search_result_pretty.clear();
+            state.product_search_last_response = None;
+            state.product_search_show_raw = false;
+
             // Perform search in background: spawn tokio task
             let query = state.product_search_query.clone();
             let sku = if state.product_search_sku.is_empty() {
@@ -196,6 +255,16 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
 
         ui.label(RichText::new("Pretty results:").strong());
 
+        // Show last response timestamp
+        if let Some(ts) = state.product_search_last_response {
+            ui.label(
+                RichText::new(format!("Last response: {}", ts.format("%Y-%m-%d %H:%M:%S")))
+                    .italics(),
+            );
+        } else {
+            ui.label(RichText::new("No response yet").italics());
+        }
+
         // Height left in this column:
         let remaining = ui.available_size_before_wrap().y;
 
@@ -215,7 +284,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                             ui.horizontal(|ui| {
                                 ui.label(name);
                                 ui.add_space(6.0);
-                                ui.label(RichText::new(price).monospace());
+                                ui.label(RichText::new(format!("${price}")).monospace());
                             });
                         }
                     } else {
@@ -226,15 +295,17 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                 }
 
                 // Raw prettified JSON in an expando
-                egui::CollapsingHeader::new("Raw response").show(ui, |ui| {
-                    let text = pretty_text.clone();
-                    ui.add(
-                        TextEdit::multiline(&mut text.as_str())
-                            .code_editor()
-                            .desired_rows(10)
-                            .desired_width(f32::INFINITY),
-                    );
-                });
+                egui::CollapsingHeader::new("Raw response")
+                    .default_open(state.product_search_show_raw)
+                    .show(ui, |ui| {
+                        let text = pretty_text.clone();
+                        ui.add(
+                            TextEdit::multiline(&mut text.as_str())
+                                .code_editor()
+                                .desired_rows(10)
+                                .desired_width(f32::INFINITY),
+                        );
+                    });
             });
         });
     });

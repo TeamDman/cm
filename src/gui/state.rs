@@ -3,12 +3,14 @@
 use crate::MAX_NAME_LENGTH;
 use crate::app_home::APP_HOME;
 use crate::cli::command::search::search_result_ok::SearchResultOk;
-use crate::image_processing::BinarizationMode; 
+use crate::image_processing::BinarizationMode;
 use crate::image_processing::ProcessingSettings;
 use crate::image_processing::get_output_path;
 use crate::image_processing::{self};
 use crate::inputs;
 use crate::rename_rules::RenameRule;
+use chrono::DateTime;
+use chrono::Local;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -120,6 +122,8 @@ pub struct AppState {
     pub product_search_result_raw: Option<SearchResultOk>,
     /// Product search tile: result JSON (pretty-printed) stored to avoid re-prettifying
     pub product_search_result_pretty: String,
+    /// When the last response was received (if any)
+    pub product_search_last_response: Option<DateTime<Local>>,
     /// Whether the raw pretty JSON is expanded
     pub product_search_show_raw: bool,
     /// Sender for background tasks
@@ -192,6 +196,8 @@ pub enum BackgroundMessage {
         result: Option<SearchResultOk>,
         pretty: Option<String>,
         error: Option<String>,
+        /// When the response was received on the background thread
+        received_at: DateTime<Local>,
     },
 }
 
@@ -232,6 +238,7 @@ impl Default for AppState {
             product_search_use_suggestion: true,
             product_search_result_raw: None,
             product_search_result_pretty: String::new(),
+            product_search_last_response: None,
             product_search_show_raw: false,
             background_sender,
             background_receiver,
@@ -823,7 +830,15 @@ impl AppState {
                 BackgroundMessage::ImageCacheError { path } => {
                     self.images_loading.remove(&path);
                 }
-                BackgroundMessage::ProductSearchResult { result, pretty, error } => {
+                BackgroundMessage::ProductSearchResult {
+                    result,
+                    pretty,
+                    error,
+                    received_at,
+                } => {
+                    // Record when we got the response so UI can show it
+                    self.product_search_last_response = Some(received_at);
+
                     if let Some(err) = error {
                         error!("Product search failed: {}", err);
                         self.product_search_result_raw = None;
