@@ -27,7 +27,8 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
 
             // Process Selected button - disable while processing or if nothing selected
             let process_selected_btn = egui::Button::new("▶ Process Selected");
-            let can_process_selected = !state.process_all_running && state.selected_input_file.is_some();
+            let can_process_selected =
+                !state.process_all_running && state.selected_input_file.is_some();
             if !can_process_selected {
                 ui.add_enabled(false, process_selected_btn);
             } else if ui.add(process_selected_btn).clicked() {
@@ -53,7 +54,6 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         }
         ui.separator();
     }
-
 
     if state.image_files.is_empty() {
         ui.label("(no image files to preview)");

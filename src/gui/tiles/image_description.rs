@@ -1,8 +1,10 @@
 //! Image description tile - shows EXIF metadata of the selected image
 
 use crate::gui::state::AppState;
-use eframe::egui::{self, ScrollArea};
-use exif::{In, Tag};
+use eframe::egui::ScrollArea;
+use eframe::egui::{self};
+use exif::In;
+use exif::Tag;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;

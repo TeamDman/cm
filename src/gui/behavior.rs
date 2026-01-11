@@ -34,7 +34,6 @@ pub enum CmPane {
     ProductSearch,
 }
 
-
 impl CmPane {
     /// Get the title for this pane
     pub fn title(&self) -> &'static str {

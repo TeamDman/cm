@@ -6,7 +6,8 @@ use facet::Facet;
 use facet_json;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Facet)]
 pub struct Node {
@@ -44,7 +45,8 @@ impl Layout {
                 tiles.insert_pane(pane_obj)
             } else {
                 let children = node.children.as_deref().unwrap_or(&[]);
-                let child_ids: Vec<egui_tiles::TileId> = children.iter().map(|c| build(c, tiles)).collect();
+                let child_ids: Vec<egui_tiles::TileId> =
+                    children.iter().map(|c| build(c, tiles)).collect();
                 match node.kind.as_deref().unwrap_or("Tabs") {
                     "Tabs" => tiles.insert_tab_tile(child_ids),
                     "Horizontal" => tiles.insert_horizontal_tile(child_ids),
@@ -77,13 +79,26 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
                     egui_tiles::ContainerKind::Grid => "Grid",
                 }
                 .to_string();
-                let children = container.children().map(|c| node_from_tile(tree, *c)).collect();
-                Node { node_type: "Container".to_string(), pane: None, kind: Some(kind), children: Some(children) }
+                let children = container
+                    .children()
+                    .map(|c| node_from_tile(tree, *c))
+                    .collect();
+                Node {
+                    node_type: "Container".to_string(),
+                    pane: None,
+                    kind: Some(kind),
+                    children: Some(children),
+                }
             }
         }
     } else {
         // Fallback to an empty tab
-        Node { node_type: "Container".to_string(), pane: None, kind: Some("Tabs".to_string()), children: Some(vec![]) }
+        Node {
+            node_type: "Container".to_string(),
+            pane: None,
+            kind: Some("Tabs".to_string()),
+            children: Some(vec![]),
+        }
     }
 }
 
@@ -102,15 +117,23 @@ impl LayoutManager {
         let preset_dir = dir.join("presets");
         let _ = fs::create_dir_all(&custom_dir);
         let _ = fs::create_dir_all(&preset_dir);
-        LayoutManager { dir, custom_dir, preset_dir, active: None, last_saved_text: None }
+        LayoutManager {
+            dir,
+            custom_dir,
+            preset_dir,
+            active: None,
+            last_saved_text: None,
+        }
     }
 
     fn layout_file_for_custom(&self, name: &str) -> PathBuf {
-        self.custom_dir.join(format!("{}.layout", sanitize_name(name)))
+        self.custom_dir
+            .join(format!("{}.layout", sanitize_name(name)))
     }
 
     fn layout_file_for_preset(&self, name: &str) -> PathBuf {
-        self.preset_dir.join(format!("{}.layout", sanitize_name(name)))
+        self.preset_dir
+            .join(format!("{}.layout", sanitize_name(name)))
     }
 
     pub fn list_custom(&self) -> Vec<String> {
@@ -121,7 +144,11 @@ impl LayoutManager {
         list_names_in_dir(&self.preset_dir)
     }
 
-    pub fn create_custom_from_layout(&mut self, name: &str, layout: &Layout) -> eyre::Result<String> {
+    pub fn create_custom_from_layout(
+        &mut self,
+        name: &str,
+        layout: &Layout,
+    ) -> eyre::Result<String> {
         let mut new_name = name.to_string();
         // Ensure unique
         let mut i = 1;
@@ -138,7 +165,11 @@ impl LayoutManager {
     pub fn save_preset(&self, name: &str, layout: &Layout) -> eyre::Result<()> {
         let path = self.layout_file_for_preset(name);
         let text = facet_json::to_string(layout)?;
-        let mut f = fs::OpenOptions::new().create(true).write(true).truncate(true).open(&path)?;
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&path)?;
         f.write_all(text.as_bytes())?;
         Ok(())
     }
@@ -147,7 +178,11 @@ impl LayoutManager {
         if let Some(active) = &self.active {
             let path = self.layout_file_for_custom(active);
             let text = facet_json::to_string(layout)?;
-            let mut f = fs::OpenOptions::new().create(true).write(true).truncate(true).open(&path)?;
+            let mut f = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)?;
             f.write_all(text.as_bytes())?;
             self.last_saved_text = Some(text);
         }
@@ -171,7 +206,11 @@ impl LayoutManager {
     }
 
     /// Activate a preset by copying it into a new custom layout, then returning its new name.
-    pub fn activate_preset_as_custom(&mut self, preset_name: &str, _tree_id: impl Into<Id>) -> eyre::Result<String> {
+    pub fn activate_preset_as_custom(
+        &mut self,
+        preset_name: &str,
+        _tree_id: impl Into<Id>,
+    ) -> eyre::Result<String> {
         let layout = self.load_named(preset_name)?;
         let new_name = format!("Custom from {}", preset_name);
         let new_name = self.create_custom_from_layout(&new_name, &layout)?;

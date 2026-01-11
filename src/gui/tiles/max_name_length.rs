@@ -4,8 +4,8 @@ use crate::MAX_NAME_LENGTH;
 use crate::MaxNameLength;
 use crate::gui::state::AppState;
 use eframe::egui;
-use tracing::error;
 use std::sync::atomic::Ordering;
+use tracing::error;
 
 /// Draw the max name length tile UI
 pub fn draw_max_name_length_tile(ui: &mut egui::Ui, state: &mut AppState) {
