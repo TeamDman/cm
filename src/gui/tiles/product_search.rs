@@ -11,6 +11,8 @@ use eframe::egui::{self};
 use facet_pretty::PrettyPrinter;
 use regex::Regex;
 use std::path::Path;
+use tokio::sync::mpsc::UnboundedSender;
+use crate::gui::state::BackgroundMessage;
 
 #[derive(Debug)]
 pub enum SearchResultDisplay {
@@ -55,7 +57,7 @@ fn suggest_search(filename: &str) -> SearchArgs {
         };
     }
 
-    let with_spaces = stem.replace('-', " ");
+    let with_spaces = stem.replace('-', " ").replace("_", " ");
     let stripped = re_digits.replace_all(&with_spaces, "").to_string();
     // Collapse whitespace and trim
     let suggestion = stripped
@@ -75,6 +77,42 @@ fn suggest_search(filename: &str) -> SearchArgs {
         no_cache: true,
         output: OutputFormat::Json,
     }
+}
+
+// Spawn a tokio task to perform a product search and forward the result to the background channel.
+fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs) {
+    tokio::spawn(async move {
+        match args.search().await {
+            Ok(res) => match res.results {
+                None => {
+                    let _ = tx.send(BackgroundMessage::ProductSearchResult {
+                        result_display: SearchResultDisplay::NoResults(Local::now()),
+                        error: None,
+                    });
+                }
+                Some(results) if results.is_empty() => {
+                    let _ = tx.send(BackgroundMessage::ProductSearchResult {
+                        result_display: SearchResultDisplay::NoResults(Local::now()),
+                        error: None,
+                    });
+                }
+                Some(results) => {
+                    let pretty = facet_json::to_string_pretty(&results)
+                        .unwrap_or_else(|_error| PrettyPrinter::new().with_colors(false).format(&results));
+                    let _ = tx.send(BackgroundMessage::ProductSearchResult {
+                        result_display: SearchResultDisplay::SomeResults(pretty.to_string()),
+                        error: None,
+                    });
+                }
+            },
+            Err(e) => {
+                let _ = tx.send(BackgroundMessage::ProductSearchResult {
+                    result_display: SearchResultDisplay::None,
+                    error: Some(format!("Search failed: {}", e)),
+                });
+            }
+        }
+    });
 }
 
 pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
@@ -100,53 +138,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     if ui.small_button("Run").clicked() {
                         let tx = state.background_sender.clone();
                         let args = suggestion.clone();
-                        tokio::spawn(async move {
-                            let tx = tx.clone();
-                            match args.search().await {
-                                Ok(res) => match res.results {
-                                    None => {
-                                        let _ = tx.send(
-                                            crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                                result_display: SearchResultDisplay::NoResults(Local::now()),
-                                                error: None,
-                                            },
-                                        );
-                                    }
-                                    Some(results) if results.is_empty() => {
-                                        let _ = tx.send(
-                                            crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                                result_display: SearchResultDisplay::NoResults(Local::now()),
-                                                error: None,
-                                            },
-                                        );
-                                    }
-                                    Some(results) => {
-                                        let pretty = facet_json::to_string_pretty(&results)
-                                            .unwrap_or_else(|_error| {
-                                                PrettyPrinter::new()
-                                                    .with_colors(false)
-                                                    .format(&results)
-                                            });
-                                        let _ = tx.send(
-                                            crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                                result_display: SearchResultDisplay::SomeResults(
-                                                    pretty.to_string(),
-                                                ),
-                                                error: None,
-                                            },
-                                        );
-                                    }
-                                },
-                                Err(e) => {
-                                    let _ = tx.send(
-                                        crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                            result_display: SearchResultDisplay::None,
-                                            error: Some(format!("Search failed: {}", e)),
-                                        },
-                                    );
-                                }
-                            }
-                        });
+                        spawn_product_search(tx, args);
                     }
                 });
             }
@@ -162,61 +154,13 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
             };
             let tx = state.background_sender.clone();
 
-            // Use tokio::spawn to run async search and then send result back via background channel
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                let args = SearchArgs {
-                    query: if query.is_empty() { None } else { Some(query) },
-                    sku,
-                    no_cache: true,
-                    output: OutputFormat::Json,
-                };
-                match args.search().await {
-                    Ok(res) => {
-                        match res.results {
-                            None => {
-                                let _ = tx.send(
-                                    crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                        result_display: SearchResultDisplay::NoResults(Local::now()),
-                                        error: None,
-                                    },
-                                );
-                            }
-                            Some(results) if results.is_empty() => {
-                                let _ = tx.send(
-                                    crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                        result_display: SearchResultDisplay::NoResults(Local::now()),
-                                        error: None,
-                                    },
-                                );
-                            }
-                            Some(results) => {
-                                // Use Facet pretty printing for readable output
-                                let pretty = facet_json::to_string_pretty(&results).unwrap_or_else(
-                                    |_error| {
-                                        PrettyPrinter::new().with_colors(false).format(&results)
-                                    },
-                                );
-                                let _ = tx.send(
-                                    crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                        result_display: SearchResultDisplay::SomeResults(
-                                            pretty.to_string(),
-                                        ),
-                                        error: None,
-                                    },
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ =
-                            tx.send(crate::gui::state::BackgroundMessage::ProductSearchResult {
-                                result_display: SearchResultDisplay::None,
-                                error: Some(format!("Search failed: {}", e)),
-                            });
-                    }
-                }
-            });
+            let args = SearchArgs {
+                query: if query.is_empty() { None } else { Some(query) },
+                sku,
+                no_cache: true,
+                output: OutputFormat::Json,
+            };
+            spawn_product_search(tx, args);
         }
         ui.add_space(6.0);
 
