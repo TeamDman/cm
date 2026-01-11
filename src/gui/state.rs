@@ -2,6 +2,7 @@
 
 use crate::MAX_NAME_LENGTH;
 use crate::app_home::APP_HOME;
+use crate::gui::tiles::SearchResultDisplay;
 use crate::image_processing::BinarizationMode;
 use crate::image_processing::ProcessingSettings;
 use crate::image_processing::get_output_path;
@@ -113,6 +114,12 @@ pub struct AppState {
     pub image_cache: HashMap<PathBuf, CachedImageInfo>,
     /// Set of paths currently being loaded in background
     pub images_loading: HashSet<PathBuf>,
+    /// Product search tile: query string
+    pub product_search_query: String,
+    /// Product search tile: SKU string
+    pub product_search_sku: String,
+    /// Product search tile: result JSON (pretty-printed)
+    pub product_search_result_display: SearchResultDisplay,
     /// Sender for background tasks
     pub background_sender: UnboundedSender<BackgroundMessage>,
     /// Receiver for background task results
@@ -178,6 +185,11 @@ pub enum BackgroundMessage {
         success: bool,
         error: Option<String>,
     },
+    /// Product search result (JSON) from Searchspring
+    ProductSearchResult {
+        result_display: SearchResultDisplay,
+        error: Option<String>,
+    },
 }
 
 impl Default for AppState {
@@ -214,6 +226,9 @@ impl Default for AppState {
             process_all_progress: None,
             image_cache: HashMap::new(),
             images_loading: HashSet::new(),
+            product_search_query: String::new(),
+            product_search_sku: String::new(),
+            product_search_result_display: SearchResultDisplay::None,
             background_sender,
             background_receiver,
         }
@@ -803,6 +818,17 @@ impl AppState {
                 }
                 BackgroundMessage::ImageCacheError { path } => {
                     self.images_loading.remove(&path);
+                }
+                BackgroundMessage::ProductSearchResult { result_display, error } => {
+                    if let Some(err) = error {
+                        if self.last_error.is_none() {
+                            self.last_error = Some(err);
+                        }
+                        self.product_search_result_display = SearchResultDisplay::None;
+                    } else {
+                        self.product_search_result_display = result_display;
+                        self.last_error = None;
+                    }
                 }
                 BackgroundMessage::ProcessSelectedComplete { success, error } => {
                     self.process_all_running = false;

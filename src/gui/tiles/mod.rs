@@ -10,9 +10,11 @@ mod max_name_length;
 mod output_preview;
 mod pan_zoom;
 mod rename_rules;
+mod product_search;
 mod threshold_preview;
 
 pub use image_description::*;
+pub use product_search::*;
 pub use image_manipulation::*;
 pub use image_preview::*;
 pub use input_images::*;
