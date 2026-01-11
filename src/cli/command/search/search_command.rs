@@ -13,6 +13,7 @@ use tracing::Instrument;
 use tracing::Level;
 use tracing::debug;
 use tracing::field::Empty;
+use tracing::info;
 use tracing::span;
 
 #[derive(ValueEnum, Arbitrary, Clone, PartialEq, Debug)]
@@ -142,10 +143,19 @@ impl SearchArgs {
         if !self.no_cache
             && let Some(cached_body) = cache_entry.read()?
         {
-            debug!("Using cached response");
+            info!(
+                "Using cached search result for query '{}' sku '{}'",
+                query,
+                self.sku.as_deref().unwrap_or("")
+            );
             return Self::parse_response(&cached_body);
         }
 
+        info!(
+            "Performing search for query '{}' sku '{}'",
+            query,
+            self.sku.as_deref().unwrap_or("")
+        );
         let _guard = span.enter();
         let resp = reqwest::Client::new()
             .get(&url)

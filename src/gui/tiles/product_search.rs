@@ -37,7 +37,7 @@ fn suggest_search(filename: &str) -> SearchArgs {
         return SearchArgs {
             query: None,
             sku: Some(sku),
-            no_cache: true,
+            no_cache: false,
             output: OutputFormat::Json,
         };
     }
@@ -71,7 +71,7 @@ fn suggest_search(filename: &str) -> SearchArgs {
             Some(suggestion)
         },
         sku: None,
-        no_cache: true,
+        no_cache: false,
         output: OutputFormat::Json,
     }
 }
@@ -134,7 +134,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
             let args = SearchArgs {
                 query: if query.is_empty() { None } else { Some(query) },
                 sku,
-                no_cache: true,
+                no_cache: false,
                 output: OutputFormat::Json,
             };
             spawn_product_search(tx, args);
@@ -163,7 +163,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
             let args = SearchArgs {
                 query: if query.is_empty() { None } else { Some(query) },
                 sku,
-                no_cache: true,
+                no_cache: false,
                 output: OutputFormat::Json,
             };
             spawn_product_search(tx, args);
@@ -241,7 +241,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
             let args = SearchArgs {
                 query: if query.is_empty() { None } else { Some(query) },
                 sku,
-                no_cache: true,
+                no_cache: false,
                 output: OutputFormat::Json,
             };
             spawn_product_search(tx, args);

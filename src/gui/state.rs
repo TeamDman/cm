@@ -228,7 +228,7 @@ impl Default for AppState {
             output_preview_path: None,
             initialized: false,
             crop_to_content: true,
-            crop_threshold: 10,
+            crop_threshold: 20,
             binarization_mode: BinarizationMode::KeepWhite,
             box_thickness: 10,
             sync_preview_pan_zoom: true,
@@ -361,7 +361,7 @@ impl AppState {
         // Spawn a single task that processes images with concurrency limit
         tokio::spawn(async move {
             // Process images with limited concurrency (4 at a time)
-            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(16));
 
             let mut handles = Vec::new();
 
