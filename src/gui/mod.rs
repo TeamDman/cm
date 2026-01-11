@@ -3,7 +3,10 @@
 mod behavior;
 pub mod state;
 mod tiles;
+mod layouts;
 pub mod tree_view;
+
+use crate::gui::layouts::{Layout, LayoutManager};
 
 use crate::app_home::APP_HOME;
 use crate::inputs;
@@ -69,15 +72,35 @@ struct CmApp {
     toasts: Toasts,
     /// Number of events we've already processed for toasts
     last_seen_event_count: usize,
-}
+    /// Layout manager (persistence + active layout)
+    layout_manager: LayoutManager,
+} 
 
 impl CmApp {
     fn new(cc: &eframe::CreationContext) -> Self {
         // Install image loaders for egui
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        let tree = create_default_tree();
+        let mut tree = create_default_tree();
         let state = AppState::default();
+
+        // Initialize layout manager and ensure we have at least one preset and one custom
+        let mut layout_manager = LayoutManager::new();
+        // If no presets exist, save a "Preset 1" based on current tree
+        if layout_manager.list_presets().is_empty() {
+            if let Some(mut preset_layout) = Layout::from_tree(&tree) {
+                preset_layout.name = "Preset 1".to_string();
+                let _ = layout_manager.save_preset("Preset 1", &preset_layout);
+            }
+        }
+        // If no custom layouts exist, create a Custom 1 from the first preset
+        if layout_manager.list_custom().is_empty() {
+            if let Some(preset_name) = layout_manager.list_presets().get(0).cloned() {
+                if let Ok(new_name) = layout_manager.activate_preset_as_custom(&preset_name, tree.id()) {
+                    layout_manager.set_active(&new_name);
+                }
+            }
+        }
 
         // Get current event count so we don't show toasts for old events
         let initial_event_count = crate::tracing::event_collector().events().len();
@@ -97,6 +120,7 @@ impl CmApp {
                 .anchor(Align2::RIGHT_BOTTOM, (-10.0, -10.0))
                 .direction(egui::Direction::BottomUp),
             last_seen_event_count: initial_event_count,
+            layout_manager,
         }
     }
 }
@@ -148,6 +172,56 @@ impl eframe::App for CmApp {
                     self.state.about_open = !self.state.about_open;
                 }
 
+                // Layout menu
+                ui.menu_button("Layout", |ui| {
+                    // Custom layouts (active shown)
+                    let customs = self.layout_manager.list_custom();
+                    if customs.is_empty() {
+                        if ui.button("No custom layout").clicked() {
+                        }
+                    } else {
+                        for name in customs {
+                            if Some(name.as_str()) == self.layout_manager.active_name() {
+                                ui.label(format!("{} (active)", name));
+                            } else if ui.button(&name).clicked() {
+                                if let Ok(layout) = self.layout_manager.load_named(&name) {
+                                    self.tree = layout.apply_to_tree(self.tree.id());
+                                    self.layout_manager.set_active(&name);
+                                }
+                            }
+                        }
+                    }
+
+                    ui.separator();
+
+                    // Presets
+                    for preset in self.layout_manager.list_presets() {
+                        if ui.button(&preset).clicked() {
+                            if let Ok(new_name) = self.layout_manager.activate_preset_as_custom(&preset, self.tree.id()) {
+                                if let Ok(layout) = self.layout_manager.load_named(&new_name) {
+                                    self.tree = layout.apply_to_tree(self.tree.id());
+                                    self.layout_manager.set_active(&new_name);
+                                }
+                            }
+                        }
+                    }
+
+                    ui.separator();
+
+                    if ui.button("Create New").clicked() {
+                        if let Some(layout) = Layout::from_tree(&self.tree) {
+                            let name = format!("Custom {}", self.layout_manager.list_custom().len() + 1);
+                            if let Ok(new_name) = self.layout_manager.create_custom_from_layout(&name, &layout) {
+                                self.layout_manager.set_active(&new_name);
+                            }
+                        }
+                    }
+
+                    if ui.button("Delete Active").clicked() {
+                        let _ = self.layout_manager.delete_active();
+                    }
+                });
+
                 // Theme switch
                 egui::widgets::global_theme_preference_switch(ui);
 
@@ -174,6 +248,11 @@ impl eframe::App for CmApp {
                 thumbnail_textures: &mut self.thumbnail_textures,
             };
             self.tree.ui(&mut behavior, ui);
+
+            // Autosave active layout if tree changed
+            if let Some(layout) = Layout::from_tree(&self.tree) {
+                let _ = self.layout_manager.maybe_autosave(&layout);
+            }
         });
 
         // Sync pan/zoom states if enabled (after drawing so dirty flags are set)

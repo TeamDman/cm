@@ -48,6 +48,39 @@ impl CmPane {
             CmPane::ImageDescription => "Image Description",
         }
     }
+
+    /// Stable key used for serialization/deserialization
+    pub fn to_key(&self) -> &'static str {
+        match self {
+            CmPane::InputPaths => "InputPaths",
+            CmPane::InputImages => "InputImages",
+            CmPane::ImageManipulation => "ImageManipulation",
+            CmPane::RenameRules => "RenameRules",
+            CmPane::MaxNameLength => "MaxNameLength",
+            CmPane::OutputPreview => "OutputPreview",
+            CmPane::InputImagePreview => "InputImagePreview",
+            CmPane::ThresholdPreview => "ThresholdPreview",
+            CmPane::OutputImagePreview => "OutputImagePreview",
+            CmPane::ImageDescription => "ImageDescription",
+        }
+    }
+
+    /// Construct from a key produced by `to_key`.
+    pub fn from_key(s: &str) -> Option<Self> {
+        Some(match s {
+            "InputPaths" => CmPane::InputPaths,
+            "InputImages" => CmPane::InputImages,
+            "ImageManipulation" => CmPane::ImageManipulation,
+            "RenameRules" => CmPane::RenameRules,
+            "MaxNameLength" => CmPane::MaxNameLength,
+            "OutputPreview" => CmPane::OutputPreview,
+            "InputImagePreview" => CmPane::InputImagePreview,
+            "ThresholdPreview" => CmPane::ThresholdPreview,
+            "OutputImagePreview" => CmPane::OutputImagePreview,
+            "ImageDescription" => CmPane::ImageDescription,
+            _ => return None,
+        })
+    }
 }
 
 /// Behavior implementation for our tile tree
