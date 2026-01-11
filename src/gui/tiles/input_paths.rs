@@ -1,18 +1,11 @@
 //! Input paths tile - shows and manages input directories
 
 use crate::gui::state::AppState;
-use eframe::egui::Color32;
 use eframe::egui::ScrollArea;
 use eframe::egui::{self};
 
 /// Draw the input paths tile UI
 pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
-    // Show error if any
-    if let Some(err) = state.last_error.as_ref() {
-        ui.colored_label(Color32::RED, err);
-        ui.separator();
-    }
-
     // Clear all button and instructions
     ui.horizontal(|ui| {
         if ui.button("🗑 Clear All").clicked() {

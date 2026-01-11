@@ -1,14 +1,14 @@
 //! CM GUI using egui_tiles for layout management
 
 mod behavior;
+mod layouts;
 pub mod state;
 mod tiles;
-mod layouts;
 pub mod tree_view;
 
-use crate::gui::layouts::{Layout, LayoutManager};
-
 use crate::app_home::APP_HOME;
+use crate::gui::layouts::Layout;
+use crate::gui::layouts::LayoutManager;
 use crate::inputs;
 use behavior::CmBehavior;
 use behavior::CmPane;
@@ -21,13 +21,17 @@ use eframe::egui::Order;
 use eframe::egui::TextStyle;
 use eframe::egui::TextureHandle;
 use eframe::egui::{self};
-use egui_toast::{Toast, ToastKind, ToastOptions, Toasts};
+use egui_toast::Toast;
+use egui_toast::ToastKind;
+use egui_toast::ToastOptions;
+use egui_toast::Toasts;
 use eyre::eyre;
 use state::AppState;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tracing::info;
 use tracing::Level;
+use tracing::error;
+use tracing::info;
 
 /// Run the GUI. This is async so the caller can create a runtime; the function will
 /// block in place on the eframe app using `tokio::task::block_in_place`.
@@ -74,14 +78,14 @@ struct CmApp {
     last_seen_event_count: usize,
     /// Layout manager (persistence + active layout)
     layout_manager: LayoutManager,
-} 
+}
 
 impl CmApp {
     fn new(cc: &eframe::CreationContext) -> Self {
         // Install image loaders for egui
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        let mut tree = create_default_tree();
+        let tree = create_default_tree();
         let state = AppState::default();
 
         // Initialize layout manager and ensure we have at least one preset and one custom
@@ -96,7 +100,9 @@ impl CmApp {
         // If no custom layouts exist, create a Custom 1 from the first preset
         if layout_manager.list_custom().is_empty() {
             if let Some(preset_name) = layout_manager.list_presets().get(0).cloned() {
-                if let Ok(new_name) = layout_manager.activate_preset_as_custom(&preset_name, tree.id()) {
+                if let Ok(new_name) =
+                    layout_manager.activate_preset_as_custom(&preset_name, tree.id())
+                {
                     layout_manager.set_active(&new_name);
                 }
             }
@@ -177,8 +183,7 @@ impl eframe::App for CmApp {
                     // Custom layouts (active shown)
                     let customs = self.layout_manager.list_custom();
                     if customs.is_empty() {
-                        if ui.button("No custom layout").clicked() {
-                        }
+                        if ui.button("No custom layout").clicked() {}
                     } else {
                         for name in customs {
                             if Some(name.as_str()) == self.layout_manager.active_name() {
@@ -197,7 +202,10 @@ impl eframe::App for CmApp {
                     // Presets
                     for preset in self.layout_manager.list_presets() {
                         if ui.button(&preset).clicked() {
-                            if let Ok(new_name) = self.layout_manager.activate_preset_as_custom(&preset, self.tree.id()) {
+                            if let Ok(new_name) = self
+                                .layout_manager
+                                .activate_preset_as_custom(&preset, self.tree.id())
+                            {
                                 if let Ok(layout) = self.layout_manager.load_named(&new_name) {
                                     self.tree = layout.apply_to_tree(self.tree.id());
                                     self.layout_manager.set_active(&new_name);
@@ -210,8 +218,12 @@ impl eframe::App for CmApp {
 
                     if ui.button("Create New").clicked() {
                         if let Some(layout) = Layout::from_tree(&self.tree) {
-                            let name = format!("Custom {}", self.layout_manager.list_custom().len() + 1);
-                            if let Ok(new_name) = self.layout_manager.create_custom_from_layout(&name, &layout) {
+                            let name =
+                                format!("Custom {}", self.layout_manager.list_custom().len() + 1);
+                            if let Ok(new_name) = self
+                                .layout_manager
+                                .create_custom_from_layout(&name, &layout)
+                            {
                                 self.layout_manager.set_active(&new_name);
                             }
                         }
@@ -327,15 +339,12 @@ impl eframe::App for CmApp {
                     .unwrap_or("")
                     .to_string();
                 self.toasts.add(
-                    Toast::default()
-                        .kind(kind)
-                        .text(message)
-                        .options(
-                            ToastOptions::default()
-                                .duration_in_seconds(5.0)
-                                .show_progress(true)
-                                .show_icon(true),
-                        ),
+                    Toast::default().kind(kind).text(message).options(
+                        ToastOptions::default()
+                            .duration_in_seconds(5.0)
+                            .show_progress(true)
+                            .show_icon(true),
+                    ),
                 );
             }
         }
@@ -389,11 +398,9 @@ impl eframe::App for CmApp {
                         info!("Added {} inputs", added.len());
                         self.state.reload_data();
                     }
-                    Err(e) => self.state.last_error = Some(format!("{}", e)),
+                    Err(e) => error!("{}", e),
                 }
             }
         }
     }
 }
-
-

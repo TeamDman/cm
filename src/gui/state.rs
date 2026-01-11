@@ -66,8 +66,6 @@ pub struct AppState {
     pub path_to_remove: Option<PathBuf>,
     /// Whether to clear all inputs (deferred action)
     pub clear_all: bool,
-    /// Last error message
-    pub last_error: Option<String>,
     /// Cached rename rules
     pub rename_rules: Vec<RenameRule>,
     /// Cached renamed file paths (after applying rules)
@@ -102,8 +100,6 @@ pub struct AppState {
     pub jpeg_quality: u8,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
-    /// Processing result message
-    pub processing_result: Option<String>,
     /// Whether output info is being calculated in the background
     pub output_info_loading: bool,
     /// Whether process_all is running in the background
@@ -202,7 +198,6 @@ impl Default for AppState {
             image_files_loading: LoadingState::NotStarted,
             path_to_remove: None,
             clear_all: false,
-            last_error: None,
             rename_rules: Vec::new(),
             renamed_files: Vec::new(),
             rename_preview_key: 0,
@@ -220,7 +215,6 @@ impl Default for AppState {
             sync_preview_pan_zoom: true,
             jpeg_quality: 90,
             selected_output_info: None,
-            processing_result: None,
             output_info_loading: false,
             process_all_running: false,
             process_all_progress: None,
@@ -247,9 +241,7 @@ impl AppState {
                 self.rename_rules = rules.into_iter().map(|(_, r)| r).collect();
             }
             Err(e) => {
-                if self.last_error.is_none() {
-                    self.last_error = Some(format!("Failed to load rules: {}", e));
-                }
+                error!("Failed to load rename rules: {}", e);
                 self.rename_rules.clear();
             }
         }
@@ -606,7 +598,6 @@ impl AppState {
 
         self.process_all_running = true;
         self.process_all_progress = Some((0, image_files.len()));
-        self.processing_result = None;
 
         tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
@@ -654,24 +645,29 @@ impl AppState {
         }
 
         let Some(selected_input) = self.selected_input_file.clone() else {
-            self.processing_result = Some("No file selected".to_string());
+            error!("No file selected");
             return;
         };
 
         // Find the corresponding renamed file
         let Some(idx) = self.image_files.iter().position(|f| f == &selected_input) else {
-            self.processing_result = Some("Selected file not found in image list".to_string());
+            error!("Selected file not found in image list");
             return;
         };
 
         let Some(renamed_file) = self.renamed_files.get(idx).cloned() else {
-            self.processing_result = Some("No renamed file for selection".to_string());
+            error!("No renamed file for selection");
             return;
         };
 
         // Find input root
-        let Some(input_root) = self.input_paths.iter().find(|r| selected_input.starts_with(r)).cloned() else {
-            self.processing_result = Some("Could not find input root for selected file".to_string());
+        let Some(input_root) = self
+            .input_paths
+            .iter()
+            .find(|r| selected_input.starts_with(r))
+            .cloned()
+        else {
+            error!("Could not find input root for selected file");
             return;
         };
 
@@ -689,7 +685,6 @@ impl AppState {
 
         self.process_all_running = true;
         self.process_all_progress = Some((0, 1));
-        self.processing_result = None;
 
         tokio::spawn(async move {
             let result = tokio::task::spawn_blocking(move || -> eyre::Result<()> {
@@ -700,7 +695,9 @@ impl AppState {
                     .unwrap_or_default();
 
                 // Calculate output path
-                let Some(output_path) = image_processing::get_output_path(&selected_input, &input_root, &renamed_name) else {
+                let Some(output_path) =
+                    image_processing::get_output_path(&selected_input, &input_root, &renamed_name)
+                else {
                     return Err(eyre::eyre!("Could not calculate output path"));
                 };
 
@@ -750,13 +747,12 @@ impl AppState {
                 BackgroundMessage::InputPathsReady { paths } => {
                     self.input_paths = paths;
                     self.input_paths_loading = LoadingState::Loaded;
-                    self.last_error = None;
                     // Now start discovering image files
                     self.start_discover_image_files();
                 }
                 BackgroundMessage::InputPathsError { error } => {
                     self.input_paths_loading = LoadingState::Failed(error.clone());
-                    self.last_error = Some(format!("Failed to load inputs: {}", error));
+                    error!("Failed to load inputs: {}", error);
                     self.input_paths.clear();
                 }
                 BackgroundMessage::ImageFilesReady { mut files } => {
@@ -768,9 +764,7 @@ impl AppState {
                 }
                 BackgroundMessage::ImageFilesError { error } => {
                     self.image_files_loading = LoadingState::Failed(error.clone());
-                    if self.last_error.is_none() {
-                        self.last_error = Some(format!("Failed to list files: {}", error));
-                    }
+                    error!("Failed to list files: {}", error);
                     self.image_files.clear();
                 }
                 BackgroundMessage::OutputInfoReady { input_path, info } => {
@@ -797,12 +791,12 @@ impl AppState {
                 } => {
                     self.process_all_running = false;
                     self.process_all_progress = None;
-                    self.processing_result = Some(format!(
-                        "Processed {} files. {} errors.",
+                    info!(
+                        "Processing complete: {} files processed, {} errors",
                         processed_count, error_count
-                    ));
+                    );
                     if !errors.is_empty() {
-                        info!("Processing errors: {:?}", errors);
+                        error!("Processing errors: {:?}", errors);
                     }
                 }
                 BackgroundMessage::ProcessAllProgress {
@@ -819,27 +813,27 @@ impl AppState {
                 BackgroundMessage::ImageCacheError { path } => {
                     self.images_loading.remove(&path);
                 }
-                BackgroundMessage::ProductSearchResult { result_display, error } => {
+                BackgroundMessage::ProductSearchResult {
+                    result_display,
+                    error,
+                } => {
                     if let Some(err) = error {
-                        if self.last_error.is_none() {
-                            self.last_error = Some(err);
-                        }
+                        error!("Product search failed: {}", err);
                         self.product_search_result_display = SearchResultDisplay::None;
                     } else {
                         self.product_search_result_display = result_display;
-                        self.last_error = None;
                     }
                 }
                 BackgroundMessage::ProcessSelectedComplete { success, error } => {
                     self.process_all_running = false;
                     self.process_all_progress = None;
                     if success {
-                        self.processing_result = Some("Processed 1 file successfully.".to_string());
+                        info!("Processed 1 file successfully.");
                     } else {
-                        self.processing_result = Some(format!(
+                        error!(
                             "Failed to process file: {}",
                             error.unwrap_or_else(|| "Unknown error".to_string())
-                        ));
+                        );
                     }
                 }
             }

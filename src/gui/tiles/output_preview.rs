@@ -54,21 +54,6 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         ui.separator();
     }
 
-    // Show processing result if any
-    if let Some(ref result) = state.processing_result {
-        ui.colored_label(
-            if result.contains("error") || result.contains("failed") {
-                Color32::RED
-            } else {
-                Color32::LIGHT_GREEN
-            },
-            result,
-        );
-        if ui.small_button("✖ dismiss").clicked() {
-            state.processing_result = None;
-        }
-        ui.separator();
-    }
 
     if state.image_files.is_empty() {
         ui.label("(no image files to preview)");
