@@ -17,9 +17,13 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.horizontal(|ui| {
         ui.heading("Output Preview");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Process All button - disable while processing
+            // Process All button - when running show a Cancel button, otherwise allow starting
             let process_all_btn = egui::Button::new("▶ Process All");
             if state.process_all_running {
+                // Cancel button appears while processing
+                if ui.add(egui::Button::new("✖ CANCEL")).clicked() {
+                    state.cancel_process_all();
+                }
                 ui.add_enabled(false, process_all_btn);
             } else if ui.add(process_all_btn).clicked() {
                 state.process_all();

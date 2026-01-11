@@ -15,7 +15,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use tokio::sync::mpsc::UnboundedReceiver;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicUsize;
+use std::time::Instant;
+use tokio::sync::mpsc::UnboundedReceiver; 
+use humantime::format_duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::{self};
 use tracing::error;
@@ -108,6 +112,8 @@ pub struct AppState {
     pub process_all_running: bool,
     /// Progress for process_all (current, total)
     pub process_all_progress: Option<(usize, usize)>,
+    /// Join handles for per-image tasks (used for cancellation)
+    pub process_all_handles: Option<Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>>,
     /// Cache of image metadata and thumbnails (path -> info)
     pub image_cache: HashMap<PathBuf, CachedImageInfo>,
     /// Set of paths currently being loaded in background
@@ -231,6 +237,7 @@ impl Default for AppState {
             output_info_loading: false,
             process_all_running: false,
             process_all_progress: None,
+            process_all_handles: None,
             image_cache: HashMap::new(),
             images_loading: HashSet::new(),
             product_search_query: String::new(),
@@ -613,48 +620,186 @@ impl AppState {
         let input_paths = self.input_paths.clone();
         let sender = self.background_sender.clone();
 
+        let total = image_files.len();
+
         self.process_all_running = true;
-        self.process_all_progress = Some((0, image_files.len()));
+        self.process_all_progress = Some((0, total));
+
+        // Shared structures for handles and counters so we can cancel and report final totals
+        let handles_arc: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
+        self.process_all_handles = Some(handles_arc.clone());
+
+        let processed_count = Arc::new(AtomicUsize::new(0));
+        let error_count = Arc::new(AtomicUsize::new(0));
+        let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        for (idx, input_path) in image_files.into_iter().enumerate() {
+            let renamed_opt = renamed_files.get(idx).cloned();
+            let input_paths_clone = input_paths.clone();
+            let settings = settings.clone();
+            let sender = sender.clone();
+            let processed_count = processed_count.clone();
+            let error_count = error_count.clone();
+            let errors = errors.clone();
+            let handles_arc = handles_arc.clone();
+
+            let handle = tokio::spawn(async move {
+                let start = Instant::now();
+
+                // Resolve renamed filename and input root
+                if renamed_opt.is_none() {
+                    let msg = format!("Missing renamed file for {}", input_path.display());
+                    errors.lock().unwrap().push(msg.clone());
+                    error_count.fetch_add(1, Ordering::SeqCst);
+                    let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                    let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                        current,
+                        total,
+                        current_file: input_path.clone(),
+                    });
+                    return;
+                }
+
+                let renamed_name = renamed_opt
+                    .unwrap()
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                let input_root = input_paths_clone
+                    .iter()
+                    .find(|r| input_path.starts_with(r))
+                    .cloned();
+
+                if input_root.is_none() {
+                    let msg = format!("Could not find input root for {}", input_path.display());
+                    errors.lock().unwrap().push(msg.clone());
+                    error_count.fetch_add(1, Ordering::SeqCst);
+                    let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                    let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                        current,
+                        total,
+                        current_file: input_path.clone(),
+                    });
+                    return;
+                }
+
+                // Calculate output path
+                let output_path = match image_processing::get_output_path(&input_path, &input_root.clone().unwrap(), &renamed_name) {
+                    Some(p) => p,
+                    None => {
+                        errors.lock().unwrap().push(format!("Could not calculate output path for {}", input_path.display()));
+                        error_count.fetch_add(1, Ordering::SeqCst);
+                        let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                            current,
+                            total,
+                            current_file: input_path.clone(),
+                        });
+                        return;
+                    }
+                };
+
+                if let Some(parent) = output_path.parent() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        errors.lock().unwrap().push(format!("Failed to create dir {}: {}", parent.display(), e));
+                        error_count.fetch_add(1, Ordering::SeqCst);
+                        let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                            current,
+                            total,
+                            current_file: input_path.clone(),
+                        });
+                        return;
+                    }
+                }
+
+                // Run image processing in blocking thread pool
+                let input_path_block = input_path.clone();
+                let output_path_block = output_path.clone();
+                let settings_block = settings.clone();
+                let result = tokio::task::spawn_blocking(move || -> eyre::Result<()> {
+                    let processed = image_processing::process_image(&input_path_block, &settings_block)?;
+                    std::fs::write(&output_path_block, &processed.data)?;
+                    Ok(())
+                })
+                .await;
+
+                match result {
+                    Ok(Ok(())) => {
+                        let dur = Instant::now() - start;
+                        let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        let remaining = total.saturating_sub(current);
+                        info!("Processed image {} in {}, {} remain", input_path.display(), format_duration(dur), remaining);
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress { current, total, current_file: input_path.clone() });
+                    }
+                    Ok(Err(e)) => {
+                        error_count.fetch_add(1, Ordering::SeqCst);
+                        errors.lock().unwrap().push(format!("Failed to process {}: {}", input_path.display(), e));
+                        let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress { current, total, current_file: input_path.clone() });
+                    }
+                    Err(e) => {
+                        error_count.fetch_add(1, Ordering::SeqCst);
+                        errors.lock().unwrap().push(format!("Task panicked for {}: {}", input_path.display(), e));
+                        let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress { current, total, current_file: input_path.clone() });
+                    }
+                }
+            });
+
+            // Store handle so we can cancel later
+            handles_arc.lock().unwrap().push(handle);
+        }
+
+        // Spawn a supervisor that awaits all per-image tasks and reports final result
+        let handles_supervisor = handles_arc.clone();
+        let errors_supervisor = errors.clone();
+        let sender_supervisor = sender.clone();
+        let processed_supervisor = processed_count.clone();
+        let error_supervisor = error_count.clone();
 
         tokio::spawn(async move {
-            let result = tokio::task::spawn_blocking(move || {
-                image_processing::process_all_images(
-                    &image_files,
-                    &renamed_files,
-                    &input_paths,
-                    &settings,
-                    None,
-                )
-            })
-            .await;
-
-            match result {
-                Ok(Ok(result)) => {
-                    let _ = sender.send(BackgroundMessage::ProcessAllComplete {
-                        processed_count: result.processed_count,
-                        error_count: result.error_count,
-                        errors: result.errors,
-                    });
-                }
-                Ok(Err(e)) => {
-                    let _ = sender.send(BackgroundMessage::ProcessAllComplete {
-                        processed_count: 0,
-                        error_count: 1,
-                        errors: vec![e.to_string()],
-                    });
-                }
-                Err(e) => {
-                    let _ = sender.send(BackgroundMessage::ProcessAllComplete {
-                        processed_count: 0,
-                        error_count: 1,
-                        errors: vec![format!("Task panicked: {}", e)],
-                    });
+            // Pop and await each handle until none left
+            loop {
+                let maybe_handle = { let mut g = handles_supervisor.lock().unwrap(); g.pop() };
+                if let Some(h) = maybe_handle {
+                    let _ = h.await;
+                } else {
+                    break;
                 }
             }
+
+            let processed = processed_supervisor.load(Ordering::SeqCst);
+            let error_count = error_supervisor.load(Ordering::SeqCst);
+            let errors = errors_supervisor.lock().unwrap().clone();
+
+            let _ = sender_supervisor.send(BackgroundMessage::ProcessAllComplete { processed_count: processed, error_count, errors });
         });
     }
 
-    /// Process just the currently selected image (runs in background)
+
+
+    /// Cancel any running Process All tasks
+    pub fn cancel_process_all(&mut self) {
+        if let Some(handles_arc) = self.process_all_handles.take() {
+            let mut handles = handles_arc.lock().unwrap();
+            for h in handles.drain(..) {
+                h.abort();
+            }
+        }
+
+        let processed = self.process_all_progress.map(|(c, _)| c).unwrap_or(0);
+        let _ = self.background_sender.send(BackgroundMessage::ProcessAllComplete {
+            processed_count: processed,
+            error_count: 0,
+            errors: vec!["Cancelled by user".to_string()],
+        });
+
+        self.process_all_running = false;
+        self.process_all_progress = None;
+    }
+
     pub fn process_selected(&mut self) {
         if self.process_all_running {
             warn!("Processing already running, ignoring request");
@@ -806,6 +951,8 @@ impl AppState {
                     error_count,
                     errors,
                 } => {
+                    // Clear handles if any
+                    self.process_all_handles = None;
                     self.process_all_running = false;
                     self.process_all_progress = None;
                     info!(
