@@ -8,13 +8,18 @@ use arbitrary::Arbitrary;
 use clap::Args;
 use clap::ValueEnum;
 use facet_pretty::FacetPretty;
+use once_cell::sync::Lazy;
 use std::ffi::OsString;
+use tokio::sync::Mutex;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::debug;
 use tracing::field::Empty;
 use tracing::info;
 use tracing::span;
+
+/// Global mutex to serialize product searches (maximizes cache hits when multiple images share SKUs)
+static SEARCH_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 #[derive(ValueEnum, Arbitrary, Clone, PartialEq, Debug)]
 pub enum OutputFormat {
@@ -84,7 +89,13 @@ impl SearchArgs {
 
     /// Perform a search against the Searchspring API.
     /// <https://docs.searchspring.com/reference/get-search>
+    /// 
+    /// Note: Searches are serialized via a global mutex to maximize cache hits
+    /// when multiple images share the same SKU.
     pub async fn search(&self) -> eyre::Result<SearchResultOk> {
+        // Acquire mutex to serialize searches - this maximizes cache hits
+        let _guard = SEARCH_MUTEX.lock().await;
+        
         let query = self.query.as_deref().unwrap_or_default();
         let site_id = SITE_ID.as_str().to_string();
         let user = USER_ID.as_uuid().to_string();

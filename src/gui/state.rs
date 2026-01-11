@@ -132,6 +132,10 @@ pub struct AppState {
     pub product_search_last_response: Option<DateTime<Local>>,
     /// Whether the raw pretty JSON is expanded
     pub product_search_show_raw: bool,
+    /// Whether to perform auto-search when processing images
+    pub auto_search_on_process: bool,
+    /// Only perform auto-search if a SKU is found in the filename
+    pub auto_search_only_if_sku: bool,
     /// Sender for background tasks
     pub background_sender: UnboundedSender<BackgroundMessage>,
     /// Receiver for background task results
@@ -247,6 +251,8 @@ impl Default for AppState {
             product_search_result_pretty: String::new(),
             product_search_last_response: None,
             product_search_show_raw: false,
+            auto_search_on_process: false,
+            auto_search_only_if_sku: true,
             background_sender,
             background_receiver,
         }
@@ -556,6 +562,7 @@ impl AppState {
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
             jpeg_quality: self.jpeg_quality,
+            description: None, // Preview doesn't need metadata
         };
         let input_path = input_path.clone();
         let sender = self.background_sender.clone();
@@ -607,18 +614,21 @@ impl AppState {
 
         self.update_rename_preview();
 
-        let settings = ProcessingSettings {
+        let base_settings = ProcessingSettings {
             crop_to_content: self.crop_to_content,
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
             jpeg_quality: self.jpeg_quality,
+            description: None, // Will be set per-image if auto-search is enabled
         };
 
         let image_files = self.image_files.clone();
         let renamed_files = self.renamed_files.clone();
         let input_paths = self.input_paths.clone();
         let sender = self.background_sender.clone();
+        let auto_search_on_process = self.auto_search_on_process;
+        let auto_search_only_if_sku = self.auto_search_only_if_sku;
 
         let total = image_files.len();
 
@@ -636,7 +646,7 @@ impl AppState {
         for (idx, input_path) in image_files.into_iter().enumerate() {
             let renamed_opt = renamed_files.get(idx).cloned();
             let input_paths_clone = input_paths.clone();
-            let settings = settings.clone();
+            let base_settings = base_settings.clone();
             let sender = sender.clone();
             let processed_count = processed_count.clone();
             let error_count = error_count.clone();
@@ -711,6 +721,45 @@ impl AppState {
                             current_file: input_path.clone(),
                         });
                         return;
+                    }
+                }
+
+                // Build settings with optional auto-search description
+                let mut settings = base_settings.clone();
+                if auto_search_on_process {
+                    // Get the filename for search suggestion
+                    if let Some(filename) = input_path.file_name().and_then(|s| s.to_str()) {
+                        use crate::gui::tiles::suggest_search;
+                        let suggestion = suggest_search(filename);
+                        
+                        // Check if we should perform the search
+                        let should_search = if auto_search_only_if_sku {
+                            suggestion.sku.is_some()
+                        } else {
+                            true
+                        };
+                        
+                        if should_search {
+                            // Perform the search
+                            let search_result = suggestion.search().await;
+                            
+                            if let Ok(result) = search_result {
+                                if let Some(results) = &result.results {
+                                    // Build description from search results
+                                    let mut description_parts: Vec<String> = Vec::new();
+                                    for item in results {
+                                        let name = item.name.as_deref().unwrap_or("");
+                                        let price = item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
+                                        if !name.is_empty() || !price.is_empty() {
+                                            description_parts.push(format!("{} ${}", name, price));
+                                        }
+                                    }
+                                    if !description_parts.is_empty() {
+                                        settings.description = Some(description_parts.join("\n"));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -835,20 +884,60 @@ impl AppState {
 
         self.update_rename_preview();
 
-        let settings = ProcessingSettings {
+        let base_settings = ProcessingSettings {
             crop_to_content: self.crop_to_content,
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
             jpeg_quality: self.jpeg_quality,
+            description: None,
         };
 
         let sender = self.background_sender.clone();
+        let auto_search_on_process = self.auto_search_on_process;
+        let auto_search_only_if_sku = self.auto_search_only_if_sku;
 
         self.process_all_running = true;
         self.process_all_progress = Some((0, 1));
 
         tokio::spawn(async move {
+            // Build settings with optional auto-search description
+            let mut settings = base_settings.clone();
+            if auto_search_on_process {
+                // Get the filename for search suggestion
+                if let Some(filename) = selected_input.file_name().and_then(|s| s.to_str()) {
+                    use crate::gui::tiles::suggest_search;
+                    let suggestion = suggest_search(filename);
+                    
+                    // Check if we should perform the search
+                    let should_search = if auto_search_only_if_sku {
+                        suggestion.sku.is_some()
+                    } else {
+                        true
+                    };
+                    
+                    if should_search {
+                        // Perform the search (mutex is inside search())
+                        if let Ok(result) = suggestion.search().await {
+                            if let Some(results) = &result.results {
+                                // Build description from search results
+                                let mut description_parts: Vec<String> = Vec::new();
+                                for item in results {
+                                    let name = item.name.as_deref().unwrap_or("");
+                                    let price = item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
+                                    if !name.is_empty() || !price.is_empty() {
+                                        description_parts.push(format!("{} ${}", name, price));
+                                    }
+                                }
+                                if !description_parts.is_empty() {
+                                    settings.description = Some(description_parts.join("\n"));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let result = tokio::task::spawn_blocking(move || -> eyre::Result<()> {
                 // Get the renamed filename
                 let renamed_name = renamed_file

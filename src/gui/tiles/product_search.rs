@@ -18,7 +18,7 @@ use tokio::sync::mpsc::UnboundedSender;
 /// suggest a query formed by replacing hyphens with spaces, inserting spaces
 /// before camel-case boundaries (but not inside ALL-CAPS), stripping numbers,
 /// and omitting any single-character tokens.
-fn suggest_search(filename: &str) -> SearchArgs {
+pub fn suggest_search(filename: &str) -> SearchArgs {
     let re_sku = Regex::new(r"\b(\d{6})\b").unwrap();
     let re_digits = Regex::new(r"\d+").unwrap();
     // Insert spaces for transitions like "HTMLParser" -> "HTML Parser"
@@ -306,6 +306,19 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                                 .desired_width(f32::INFINITY),
                         );
                     });
+
+                ui.add_space(8.0);
+                ui.separator();
+
+                // Auto-search options
+                ui.checkbox(
+                    &mut state.auto_search_on_process,
+                    "Perform auto search when processing",
+                );
+                ui.add_enabled(
+                    state.auto_search_on_process,
+                    egui::Checkbox::new(&mut state.auto_search_only_if_sku, "Only if SKU found"),
+                );
             });
         });
     });
