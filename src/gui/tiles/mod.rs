@@ -1,5 +1,6 @@
 //! Tile implementations for the CM GUI
 
+mod image_description;
 mod image_manipulation;
 mod image_preview;
 mod input_images;
@@ -11,6 +12,7 @@ mod pan_zoom;
 mod rename_rules;
 mod threshold_preview;
 
+pub use image_description::*;
 pub use image_manipulation::*;
 pub use image_preview::*;
 pub use input_images::*;

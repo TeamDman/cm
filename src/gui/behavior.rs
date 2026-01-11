@@ -28,6 +28,8 @@ pub enum CmPane {
     ThresholdPreview,
     /// Output image preview  
     OutputImagePreview,
+    /// Image description/EXIF data
+    ImageDescription,
 }
 
 impl CmPane {
@@ -43,6 +45,7 @@ impl CmPane {
             CmPane::InputImagePreview => "Input Preview",
             CmPane::ThresholdPreview => "Threshold Preview",
             CmPane::OutputImagePreview => "Output Preview Image",
+            CmPane::ImageDescription => "Image Description",
         }
     }
 }
@@ -97,6 +100,7 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
                 self.output_texture_path,
                 self.output_pan_zoom,
             ),
+            CmPane::ImageDescription => tiles::draw_image_description_tile(ui, self.state),
         }
 
         // For now, no drag response
@@ -133,6 +137,7 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     let input_image_preview_id = tiles.insert_pane(CmPane::InputImagePreview);
     let threshold_preview_id = tiles.insert_pane(CmPane::ThresholdPreview);
     let output_image_preview_id = tiles.insert_pane(CmPane::OutputImagePreview);
+    let image_description_id = tiles.insert_pane(CmPane::ImageDescription);
 
     // Left column: Input Paths + Input Images (vertical)
     let left_column = tiles.insert_vertical_tile(vec![input_paths_id, input_images_id]);
@@ -144,11 +149,12 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
         output_image_preview_id,
     ]);
 
-    // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length)
+    // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length + Image Description)
     let settings_column = tiles.insert_vertical_tile(vec![
         image_manipulation_id,
         rename_rules_id,
         max_name_length_id,
+        image_description_id,
     ]);
 
     // Right column: Output Preview
