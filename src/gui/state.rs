@@ -11,15 +11,16 @@ use crate::inputs;
 use crate::rename_rules::RenameRule;
 use chrono::DateTime;
 use chrono::Local;
+use humantime::format_duration;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
-use tokio::sync::mpsc::UnboundedReceiver; 
-use humantime::format_duration;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::{self};
 use tracing::error;
@@ -636,7 +637,8 @@ impl AppState {
         self.process_all_progress = Some((0, total));
 
         // Shared structures for handles and counters so we can cancel and report final totals
-        let handles_arc: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
+        let handles_arc: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> =
+            Arc::new(Mutex::new(Vec::new()));
         self.process_all_handles = Some(handles_arc.clone());
 
         let processed_count = Arc::new(AtomicUsize::new(0));
@@ -695,10 +697,17 @@ impl AppState {
                 }
 
                 // Calculate output path
-                let output_path = match image_processing::get_output_path(&input_path, &input_root.clone().unwrap(), &renamed_name) {
+                let output_path = match image_processing::get_output_path(
+                    &input_path,
+                    &input_root.clone().unwrap(),
+                    &renamed_name,
+                ) {
                     Some(p) => p,
                     None => {
-                        errors.lock().unwrap().push(format!("Could not calculate output path for {}", input_path.display()));
+                        errors.lock().unwrap().push(format!(
+                            "Could not calculate output path for {}",
+                            input_path.display()
+                        ));
                         error_count.fetch_add(1, Ordering::SeqCst);
                         let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
                         let _ = sender.send(BackgroundMessage::ProcessAllProgress {
@@ -712,7 +721,11 @@ impl AppState {
 
                 if let Some(parent) = output_path.parent() {
                     if let Err(e) = std::fs::create_dir_all(parent) {
-                        errors.lock().unwrap().push(format!("Failed to create dir {}: {}", parent.display(), e));
+                        errors.lock().unwrap().push(format!(
+                            "Failed to create dir {}: {}",
+                            parent.display(),
+                            e
+                        ));
                         error_count.fetch_add(1, Ordering::SeqCst);
                         let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
                         let _ = sender.send(BackgroundMessage::ProcessAllProgress {
@@ -731,25 +744,26 @@ impl AppState {
                     if let Some(filename) = input_path.file_name().and_then(|s| s.to_str()) {
                         use crate::gui::tiles::suggest_search;
                         let suggestion = suggest_search(filename);
-                        
+
                         // Check if we should perform the search
                         let should_search = if auto_search_only_if_sku {
                             suggestion.sku.is_some()
                         } else {
                             true
                         };
-                        
+
                         if should_search {
                             // Perform the search
                             let search_result = suggestion.search().await;
-                            
+
                             if let Ok(result) = search_result {
                                 if let Some(results) = &result.results {
                                     // Build description from search results
                                     let mut description_parts: Vec<String> = Vec::new();
                                     for item in results {
                                         let name = item.name.as_deref().unwrap_or("");
-                                        let price = item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
+                                        let price =
+                                            item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
                                         if !name.is_empty() || !price.is_empty() {
                                             description_parts.push(format!("{} ${}", name, price));
                                         }
@@ -768,7 +782,8 @@ impl AppState {
                 let output_path_block = output_path.clone();
                 let settings_block = settings.clone();
                 let result = tokio::task::spawn_blocking(move || -> eyre::Result<()> {
-                    let processed = image_processing::process_image(&input_path_block, &settings_block)?;
+                    let processed =
+                        image_processing::process_image(&input_path_block, &settings_block)?;
                     std::fs::write(&output_path_block, &processed.data)?;
                     Ok(())
                 })
@@ -779,20 +794,45 @@ impl AppState {
                         let dur = Instant::now() - start;
                         let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
                         let remaining = total.saturating_sub(current);
-                        info!("Processed image {} in {}, {} remain", input_path.display(), format_duration(dur), remaining);
-                        let _ = sender.send(BackgroundMessage::ProcessAllProgress { current, total, current_file: input_path.clone() });
+                        info!(
+                            "Processed image {} in {}, {} remain",
+                            input_path.display(),
+                            format_duration(dur),
+                            remaining
+                        );
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                            current,
+                            total,
+                            current_file: input_path.clone(),
+                        });
                     }
                     Ok(Err(e)) => {
                         error_count.fetch_add(1, Ordering::SeqCst);
-                        errors.lock().unwrap().push(format!("Failed to process {}: {}", input_path.display(), e));
+                        errors.lock().unwrap().push(format!(
+                            "Failed to process {}: {}",
+                            input_path.display(),
+                            e
+                        ));
                         let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _ = sender.send(BackgroundMessage::ProcessAllProgress { current, total, current_file: input_path.clone() });
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                            current,
+                            total,
+                            current_file: input_path.clone(),
+                        });
                     }
                     Err(e) => {
                         error_count.fetch_add(1, Ordering::SeqCst);
-                        errors.lock().unwrap().push(format!("Task panicked for {}: {}", input_path.display(), e));
+                        errors.lock().unwrap().push(format!(
+                            "Task panicked for {}: {}",
+                            input_path.display(),
+                            e
+                        ));
                         let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _ = sender.send(BackgroundMessage::ProcessAllProgress { current, total, current_file: input_path.clone() });
+                        let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                            current,
+                            total,
+                            current_file: input_path.clone(),
+                        });
                     }
                 }
             });
@@ -811,7 +851,10 @@ impl AppState {
         tokio::spawn(async move {
             // Pop and await each handle until none left
             loop {
-                let maybe_handle = { let mut g = handles_supervisor.lock().unwrap(); g.pop() };
+                let maybe_handle = {
+                    let mut g = handles_supervisor.lock().unwrap();
+                    g.pop()
+                };
                 if let Some(h) = maybe_handle {
                     let _ = h.await;
                 } else {
@@ -823,11 +866,13 @@ impl AppState {
             let error_count = error_supervisor.load(Ordering::SeqCst);
             let errors = errors_supervisor.lock().unwrap().clone();
 
-            let _ = sender_supervisor.send(BackgroundMessage::ProcessAllComplete { processed_count: processed, error_count, errors });
+            let _ = sender_supervisor.send(BackgroundMessage::ProcessAllComplete {
+                processed_count: processed,
+                error_count,
+                errors,
+            });
         });
     }
-
-
 
     /// Cancel any running Process All tasks
     pub fn cancel_process_all(&mut self) {
@@ -839,11 +884,13 @@ impl AppState {
         }
 
         let processed = self.process_all_progress.map(|(c, _)| c).unwrap_or(0);
-        let _ = self.background_sender.send(BackgroundMessage::ProcessAllComplete {
-            processed_count: processed,
-            error_count: 0,
-            errors: vec!["Cancelled by user".to_string()],
-        });
+        let _ = self
+            .background_sender
+            .send(BackgroundMessage::ProcessAllComplete {
+                processed_count: processed,
+                error_count: 0,
+                errors: vec!["Cancelled by user".to_string()],
+            });
 
         self.process_all_running = false;
         self.process_all_progress = None;
@@ -908,14 +955,14 @@ impl AppState {
                 if let Some(filename) = selected_input.file_name().and_then(|s| s.to_str()) {
                     use crate::gui::tiles::suggest_search;
                     let suggestion = suggest_search(filename);
-                    
+
                     // Check if we should perform the search
                     let should_search = if auto_search_only_if_sku {
                         suggestion.sku.is_some()
                     } else {
                         true
                     };
-                    
+
                     if should_search {
                         // Perform the search (mutex is inside search())
                         if let Ok(result) = suggestion.search().await {
@@ -924,7 +971,8 @@ impl AppState {
                                 let mut description_parts: Vec<String> = Vec::new();
                                 for item in results {
                                     let name = item.name.as_deref().unwrap_or("");
-                                    let price = item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
+                                    let price =
+                                        item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
                                     if !name.is_empty() || !price.is_empty() {
                                         description_parts.push(format!("{} ${}", name, price));
                                     }

@@ -3,7 +3,6 @@ use crate::gui::behavior::CmPane;
 use eframe::egui::Id;
 use egui_tiles::Tree;
 use facet::Facet;
-use facet_json;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -103,7 +102,6 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
 }
 
 pub struct LayoutManager {
-    dir: PathBuf,
     pub custom_dir: PathBuf,
     pub preset_dir: PathBuf,
     pub active: Option<String>,
@@ -118,7 +116,6 @@ impl LayoutManager {
         let _ = fs::create_dir_all(&custom_dir);
         let _ = fs::create_dir_all(&preset_dir);
         LayoutManager {
-            dir,
             custom_dir,
             preset_dir,
             active: None,

@@ -89,13 +89,13 @@ impl SearchArgs {
 
     /// Perform a search against the Searchspring API.
     /// <https://docs.searchspring.com/reference/get-search>
-    /// 
+    ///
     /// Note: Searches are serialized via a global mutex to maximize cache hits
     /// when multiple images share the same SKU.
     pub async fn search(&self) -> eyre::Result<SearchResultOk> {
         // Acquire mutex to serialize searches - this maximizes cache hits
         let _guard = SEARCH_MUTEX.lock().await;
-        
+
         let query = self.query.as_deref().unwrap_or_default();
         let site_id = SITE_ID.as_str().to_string();
         let user = USER_ID.as_uuid().to_string();

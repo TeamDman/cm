@@ -154,7 +154,7 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
 
     // Encode full-resolution output using the original format
     let mut data = encode_image(&processed, output_format, settings.jpeg_quality)?;
-    
+
     // If we have a description, embed it as EXIF metadata
     if let Some(ref description) = settings.description {
         if !description.is_empty() {
@@ -164,7 +164,7 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
             data = embed_exif(&data, output_format, &exif_data)?;
         }
     }
-    
+
     let estimated_size = data.len() as u64;
 
     Ok(ProcessedImage {
@@ -222,7 +222,7 @@ fn encode_image(img: &DynamicImage, format: ImageFormat, jpeg_quality: u8) -> Re
 fn read_exif_bytes(path: &Path) -> Option<Vec<u8>> {
     let data = std::fs::read(path).ok()?;
     let format = detect_format_from_path(path);
-    
+
     match format {
         ImageFormat::Jpeg => {
             let jpeg = Jpeg::from_bytes(data.into()).ok()?;
@@ -242,26 +242,26 @@ fn create_exif_with_description(description: &str) -> Vec<u8> {
     // EXIF uses TIFF format. We'll create a minimal structure:
     // - TIFF header (8 bytes)
     // - IFD0 with ImageDescription tag (0x010E)
-    
+
     let desc_bytes = description.as_bytes();
     let desc_len = desc_bytes.len() as u32 + 1; // +1 for null terminator
-    
+
     // Calculate offsets
     let ifd0_offset: u32 = 8; // Right after TIFF header
     let ifd0_entries: u16 = 1; // Just ImageDescription
     let ifd0_size = 2 + 12 * ifd0_entries as usize + 4; // entry count + entries + next IFD pointer
     let data_offset: u32 = ifd0_offset + ifd0_size as u32;
-    
+
     let mut exif = Vec::new();
-    
+
     // TIFF header (little-endian)
     exif.extend_from_slice(b"II"); // Little-endian marker
     exif.extend_from_slice(&42u16.to_le_bytes()); // TIFF magic number
     exif.extend_from_slice(&ifd0_offset.to_le_bytes()); // Offset to IFD0
-    
+
     // IFD0
     exif.extend_from_slice(&ifd0_entries.to_le_bytes()); // Number of entries
-    
+
     // ImageDescription tag (0x010E)
     exif.extend_from_slice(&0x010Eu16.to_le_bytes()); // Tag
     exif.extend_from_slice(&2u16.to_le_bytes()); // Type: ASCII
@@ -275,16 +275,16 @@ fn create_exif_with_description(description: &str) -> Vec<u8> {
         // Value stored at data_offset
         exif.extend_from_slice(&data_offset.to_le_bytes());
     }
-    
+
     // Next IFD pointer (0 = no more IFDs)
     exif.extend_from_slice(&0u32.to_le_bytes());
-    
+
     // Description data (if longer than 4 bytes)
     if desc_len > 4 {
         exif.extend_from_slice(desc_bytes);
         exif.push(0); // Null terminator
     }
-    
+
     exif
 }
 
