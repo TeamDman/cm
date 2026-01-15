@@ -20,7 +20,7 @@ impl Default for RenameRule {
             replace: String::new(),
             enabled: true,
             case_sensitive: false,
-            only_when_name_too_long: false,
+            only_when_name_too_long: true,
         }
     }
 }
