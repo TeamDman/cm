@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -55,7 +54,7 @@ pub enum LoadingState {
 }
 
 impl LoadingState {
-    #[must_use] 
+    #[must_use]
     pub fn is_loading(&self) -> bool {
         matches!(self, LoadingState::Loading)
     }
@@ -408,13 +407,13 @@ impl AppState {
     }
 
     /// Check if an image is still loading
-    #[must_use] 
+    #[must_use]
     pub fn is_image_loading(&self, path: &PathBuf) -> bool {
         self.images_loading.contains(path)
     }
 
     /// Get cached image info if available
-    #[must_use] 
+    #[must_use]
     pub fn get_cached_image(&self, path: &PathBuf) -> Option<&CachedImageInfo> {
         self.image_cache.get(path)
     }
@@ -705,7 +704,9 @@ impl AppState {
                     &input_path,
                     &input_root.clone().unwrap(),
                     &renamed_name,
-                ) { p } else {
+                ) {
+                    p
+                } else {
                     errors.lock().unwrap().push(format!(
                         "Could not calculate output path for {}",
                         input_path.display()
@@ -721,21 +722,22 @@ impl AppState {
                 };
 
                 if let Some(parent) = output_path.parent()
-                    && let Err(e) = std::fs::create_dir_all(parent) {
-                        errors.lock().unwrap().push(format!(
-                            "Failed to create dir {}: {}",
-                            parent.display(),
-                            e
-                        ));
-                        error_count.fetch_add(1, Ordering::SeqCst);
-                        let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _ = sender.send(BackgroundMessage::ProcessAllProgress {
-                            current,
-                            total,
-                            current_file: input_path.clone(),
-                        });
-                        return;
-                    }
+                    && let Err(e) = std::fs::create_dir_all(parent)
+                {
+                    errors.lock().unwrap().push(format!(
+                        "Failed to create dir {}: {}",
+                        parent.display(),
+                        e
+                    ));
+                    error_count.fetch_add(1, Ordering::SeqCst);
+                    let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                    let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                        current,
+                        total,
+                        current_file: input_path.clone(),
+                    });
+                    return;
+                }
 
                 // Build settings with optional auto-search description
                 let mut settings = base_settings.clone();
@@ -757,21 +759,21 @@ impl AppState {
                             let search_result = suggestion.search().await;
 
                             if let Ok(result) = search_result
-                                && let Some(results) = &result.results {
-                                    // Build description from search results
-                                    let mut description_parts: Vec<String> = Vec::new();
-                                    for item in results {
-                                        let name = item.name.as_deref().unwrap_or("");
-                                        let price =
-                                            item.price.as_ref().map_or("", |p| p.0.as_str());
-                                        if !name.is_empty() || !price.is_empty() {
-                                            description_parts.push(format!("{name} ${price}"));
-                                        }
-                                    }
-                                    if !description_parts.is_empty() {
-                                        settings.description = Some(description_parts.join("\n"));
+                                && let Some(results) = &result.results
+                            {
+                                // Build description from search results
+                                let mut description_parts: Vec<String> = Vec::new();
+                                for item in results {
+                                    let name = item.name.as_deref().unwrap_or("");
+                                    let price = item.price.as_ref().map_or("", |p| p.0.as_str());
+                                    if !name.is_empty() || !price.is_empty() {
+                                        description_parts.push(format!("{name} ${price}"));
                                     }
                                 }
+                                if !description_parts.is_empty() {
+                                    settings.description = Some(description_parts.join("\n"));
+                                }
+                            }
                         }
                     }
                 }
@@ -965,21 +967,21 @@ impl AppState {
                     if should_search {
                         // Perform the search (mutex is inside search())
                         if let Ok(result) = suggestion.search().await
-                            && let Some(results) = &result.results {
-                                // Build description from search results
-                                let mut description_parts: Vec<String> = Vec::new();
-                                for item in results {
-                                    let name = item.name.as_deref().unwrap_or("");
-                                    let price =
-                                        item.price.as_ref().map_or("", |p| p.0.as_str());
-                                    if !name.is_empty() || !price.is_empty() {
-                                        description_parts.push(format!("{name} ${price}"));
-                                    }
-                                }
-                                if !description_parts.is_empty() {
-                                    settings.description = Some(description_parts.join("\n"));
+                            && let Some(results) = &result.results
+                        {
+                            // Build description from search results
+                            let mut description_parts: Vec<String> = Vec::new();
+                            for item in results {
+                                let name = item.name.as_deref().unwrap_or("");
+                                let price = item.price.as_ref().map_or("", |p| p.0.as_str());
+                                if !name.is_empty() || !price.is_empty() {
+                                    description_parts.push(format!("{name} ${price}"));
                                 }
                             }
+                            if !description_parts.is_empty() {
+                                settings.description = Some(description_parts.join("\n"));
+                            }
+                        }
                     }
                 }
             }
@@ -1148,7 +1150,7 @@ impl AppState {
 }
 
 /// Check if a path is an image file
-#[must_use] 
+#[must_use]
 pub fn is_image_file(path: &std::path::Path) -> bool {
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         matches!(

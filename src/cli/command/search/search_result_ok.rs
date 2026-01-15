@@ -47,7 +47,7 @@ pub struct Url(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
 pub struct Price(pub String);
 impl Price {
-    #[must_use] 
+    #[must_use]
     pub fn as_f64(&self) -> Option<f64> {
         self.0.parse().ok()
     }

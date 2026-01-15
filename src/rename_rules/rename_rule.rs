@@ -27,7 +27,7 @@ impl Default for RenameRule {
 
 impl RenameRule {
     /// Serialize rule to file text (v2 format)
-    #[must_use] 
+    #[must_use]
     pub fn to_file_text(&self) -> String {
         let mut s = String::new();
         s.push_str(&self.find);
@@ -91,7 +91,7 @@ impl RenameRule {
     }
 
     /// Apply rule to a file name. Returns `Some(new_name)` if applied and changed, otherwise None.
-    #[must_use] 
+    #[must_use]
     pub fn apply(&self, name: &str, max_name_length: usize) -> Option<String> {
         if !self.enabled || self.find.is_empty() {
             return None;

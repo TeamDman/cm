@@ -42,7 +42,7 @@ impl CacheHome {
     }
 
     /// Returns the path to the `api_responses` subdirectory.
-    #[must_use] 
+    #[must_use]
     pub fn api_responses_dir(&self) -> PathBuf {
         self.0.join("api_responses")
     }
@@ -79,25 +79,25 @@ impl CacheEntry {
     }
 
     /// Path to the response body file.
-    #[must_use] 
+    #[must_use]
     pub fn response_path(&self) -> PathBuf {
         self.dir.join("response.txt")
     }
 
     /// Path to the URL file.
-    #[must_use] 
+    #[must_use]
     pub fn url_path(&self) -> PathBuf {
         self.dir.join("url.txt")
     }
 
     /// Path to the timestamps file.
-    #[must_use] 
+    #[must_use]
     pub fn timestamps_path(&self) -> PathBuf {
         self.dir.join("timestamps.txt")
     }
 
     /// Check if a cached response exists.
-    #[must_use] 
+    #[must_use]
     pub fn exists(&self) -> bool {
         self.response_path().exists()
     }

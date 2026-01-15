@@ -28,7 +28,8 @@ pub fn suggest_search(filename: &str) -> SearchArgs {
 
     // Use file stem (strip extension) when possible
     let stem = Path::new(filename)
-        .file_stem().map_or_else(|| filename.to_string(), |s| s.to_string_lossy().to_string());
+        .file_stem()
+        .map_or_else(|| filename.to_string(), |s| s.to_string_lossy().to_string());
 
     if let Some(cap) = re_sku.captures(&stem) {
         let sku = cap.get(1).unwrap().as_str().to_string();
@@ -186,14 +187,15 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     if ui
                         .checkbox(&mut state.product_search_use_suggestion, "Use suggested")
                         .changed()
-                        && state.product_search_use_suggestion {
-                            if let Some(s) = &suggestion.sku {
-                                state.product_search_sku = s.clone();
-                            }
-                            if let Some(q) = &suggestion.query {
-                                state.product_search_query = q.clone();
-                            }
+                        && state.product_search_use_suggestion
+                    {
+                        if let Some(s) = &suggestion.sku {
+                            state.product_search_sku = s.clone();
                         }
+                        if let Some(q) = &suggestion.query {
+                            state.product_search_query = q.clone();
+                        }
+                    }
 
                     // Keep fields synced to the latest suggestion while the option is active
                     if state.product_search_use_suggestion {

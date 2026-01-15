@@ -227,8 +227,10 @@ pub fn draw_image_description_tile(ui: &mut egui::Ui, state: &AppState) {
     // Show the filename
     ui.horizontal(|ui| {
         ui.label("📷");
-        let filename = selected_path
-            .file_name().map_or_else(|| selected_path.display().to_string(), |s| s.to_string_lossy().to_string());
+        let filename = selected_path.file_name().map_or_else(
+            || selected_path.display().to_string(),
+            |s| s.to_string_lossy().to_string(),
+        );
         let response = ui.strong(&filename);
         response.on_hover_text(selected_path.display().to_string());
     });

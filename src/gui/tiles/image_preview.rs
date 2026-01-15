@@ -95,8 +95,10 @@ fn draw_output_preview_with_texture(
                 should_clear = true;
             }
 
-            let filename = input_path
-                .file_name().map_or_else(|| input_path.display().to_string(), |s| s.to_string_lossy().to_string());
+            let filename = input_path.file_name().map_or_else(
+                || input_path.display().to_string(),
+                |s| s.to_string_lossy().to_string(),
+            );
 
             let label = if state.crop_to_content {
                 format!("{filename} (cropped preview)")
@@ -185,8 +187,10 @@ fn draw_image_preview_with_pan_zoom(
                 }
 
                 // Show just the filename, with full path on hover
-                let filename = path
-                    .file_name().map_or_else(|| path.display().to_string(), |s| s.to_string_lossy().to_string());
+                let filename = path.file_name().map_or_else(
+                    || path.display().to_string(),
+                    |s| s.to_string_lossy().to_string(),
+                );
 
                 let response = ui.label(&filename);
                 response.on_hover_text(path.display().to_string());

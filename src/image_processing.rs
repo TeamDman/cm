@@ -156,12 +156,13 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
 
     // If we have a description, embed it as EXIF metadata
     if let Some(ref description) = settings.description
-        && !description.is_empty() {
-            // Read existing EXIF from source if available
-            let existing_exif = read_exif_bytes(path);
-            let exif_data = merge_description_into_exif(existing_exif.as_deref(), description);
-            data = embed_exif(&data, output_format, &exif_data)?;
-        }
+        && !description.is_empty()
+    {
+        // Read existing EXIF from source if available
+        let existing_exif = read_exif_bytes(path);
+        let exif_data = merge_description_into_exif(existing_exif.as_deref(), description);
+        data = embed_exif(&data, output_format, &exif_data)?;
+    }
 
     let estimated_size = data.len() as u64;
 
@@ -582,7 +583,7 @@ fn draw_bounding_box(
 }
 
 /// Crop an image to its content using threshold-based detection
-#[must_use] 
+#[must_use]
 pub fn crop_to_content_with_threshold(
     img: &DynamicImage,
     threshold: u8,
@@ -616,7 +617,7 @@ pub fn crop_to_content_with_threshold(
 }
 
 /// Crop an image to its content, removing whitespace/transparent padding
-#[must_use] 
+#[must_use]
 pub fn crop_to_content(img: &DynamicImage) -> DynamicImage {
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
@@ -671,7 +672,7 @@ fn is_background_pixel(pixel: &image::Rgba<u8>) -> bool {
 }
 
 /// Get the output directory for an input path (appends -output to directory name)
-#[must_use] 
+#[must_use]
 pub fn get_output_dir(input_path: &Path) -> PathBuf {
     if let Some(parent) = input_path.parent()
         && let Some(name) = input_path.file_name()
@@ -690,7 +691,7 @@ pub fn get_output_dir(input_path: &Path) -> PathBuf {
 }
 
 /// Get the output path for a file given its input path and the original input root
-#[must_use] 
+#[must_use]
 pub fn get_output_path(
     file_path: &Path,
     input_root: &Path,

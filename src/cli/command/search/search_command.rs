@@ -100,9 +100,7 @@ impl SearchArgs {
         let site_id = SITE_ID.as_str().to_string();
         let user = USER_ID.as_uuid().to_string();
         let session = SESSION_ID.as_uuid().to_string();
-        let url = format!(
-            "https://{site_id}.a.searchspring.io/api/search/search.json"
-        );
+        let url = format!("https://{site_id}.a.searchspring.io/api/search/search.json");
         let git_rev = option_env!("GIT_REVISION").unwrap_or("unknown");
         let user_agent = format!(
             "{} v{} (rev {}) (+https://github.com/TeamDman/cm)",

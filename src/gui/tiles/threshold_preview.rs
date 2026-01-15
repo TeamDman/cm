@@ -27,8 +27,10 @@ pub fn draw_threshold_preview_tile(
                 should_clear = true;
             }
 
-            let filename = input_path
-                .file_name().map_or_else(|| input_path.display().to_string(), |s| s.to_string_lossy().to_string());
+            let filename = input_path.file_name().map_or_else(
+                || input_path.display().to_string(),
+                |s| s.to_string_lossy().to_string(),
+            );
 
             let response = ui.label(format!("{filename} (threshold)"));
             response.on_hover_text(input_path.display().to_string());
@@ -44,8 +46,7 @@ pub fn draw_threshold_preview_tile(
 
             if needs_reload {
                 // Load the threshold preview from PNG bytes
-                if let Ok(image) = image::load_from_memory(&output_info.threshold_preview_data)
-                {
+                if let Ok(image) = image::load_from_memory(&output_info.threshold_preview_data) {
                     let size = [image.width() as _, image.height() as _];
                     let rgba = image.to_rgba8();
                     let pixels = rgba.as_flat_samples();

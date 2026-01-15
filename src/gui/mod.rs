@@ -92,18 +92,18 @@ impl CmApp {
         let mut layout_manager = LayoutManager::new();
         // If no presets exist, save a "Preset 1" based on current tree
         if layout_manager.list_presets().is_empty()
-            && let Some(mut preset_layout) = Layout::from_tree(&tree) {
-                preset_layout.name = "Preset 1".to_string();
-                let _ = layout_manager.save_preset("Preset 1", &preset_layout);
-            }
+            && let Some(mut preset_layout) = Layout::from_tree(&tree)
+        {
+            preset_layout.name = "Preset 1".to_string();
+            let _ = layout_manager.save_preset("Preset 1", &preset_layout);
+        }
         // If no custom layouts exist, create a Custom 1 from the first preset
         if layout_manager.list_custom().is_empty()
             && let Some(preset_name) = layout_manager.list_presets().first().cloned()
-                && let Ok(new_name) =
-                    layout_manager.activate_preset_as_custom(&preset_name, tree.id())
-                {
-                    layout_manager.set_active(&new_name);
-                }
+            && let Ok(new_name) = layout_manager.activate_preset_as_custom(&preset_name, tree.id())
+        {
+            layout_manager.set_active(&new_name);
+        }
 
         // Get current event count so we don't show toasts for old events
         let initial_event_count = crate::tracing::event_collector().events().len();
@@ -186,10 +186,11 @@ impl eframe::App for CmApp {
                             if Some(name.as_str()) == self.layout_manager.active_name() {
                                 ui.label(format!("{name} (active)"));
                             } else if ui.button(&name).clicked()
-                                && let Ok(layout) = self.layout_manager.load_named(&name) {
-                                    self.tree = layout.apply_to_tree(self.tree.id());
-                                    self.layout_manager.set_active(&name);
-                                }
+                                && let Ok(layout) = self.layout_manager.load_named(&name)
+                            {
+                                self.tree = layout.apply_to_tree(self.tree.id());
+                                self.layout_manager.set_active(&name);
+                            }
                         }
                     }
 
@@ -201,25 +202,27 @@ impl eframe::App for CmApp {
                             && let Ok(new_name) = self
                                 .layout_manager
                                 .activate_preset_as_custom(&preset, self.tree.id())
-                                && let Ok(layout) = self.layout_manager.load_named(&new_name) {
-                                    self.tree = layout.apply_to_tree(self.tree.id());
-                                    self.layout_manager.set_active(&new_name);
-                                }
+                            && let Ok(layout) = self.layout_manager.load_named(&new_name)
+                        {
+                            self.tree = layout.apply_to_tree(self.tree.id());
+                            self.layout_manager.set_active(&new_name);
+                        }
                     }
 
                     ui.separator();
 
                     if ui.button("Create New").clicked()
-                        && let Some(layout) = Layout::from_tree(&self.tree) {
-                            let name =
-                                format!("Custom {}", self.layout_manager.list_custom().len() + 1);
-                            if let Ok(new_name) = self
-                                .layout_manager
-                                .create_custom_from_layout(&name, &layout)
-                            {
-                                self.layout_manager.set_active(&new_name);
-                            }
+                        && let Some(layout) = Layout::from_tree(&self.tree)
+                    {
+                        let name =
+                            format!("Custom {}", self.layout_manager.list_custom().len() + 1);
+                        if let Ok(new_name) = self
+                            .layout_manager
+                            .create_custom_from_layout(&name, &layout)
+                        {
+                            self.layout_manager.set_active(&new_name);
                         }
+                    }
 
                     if ui.button("Delete Active").clicked() {
                         let _ = self.layout_manager.delete_active();

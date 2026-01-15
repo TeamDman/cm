@@ -83,7 +83,7 @@ impl MaxNameLength {
     }
 
     /// Convenience accessor
-    #[must_use] 
+    #[must_use]
     pub fn as_usize(&self) -> usize {
         self.0
     }

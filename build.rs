@@ -6,7 +6,7 @@ fn main() {
     embed_resource::compile("resources/app.rc", embed_resource::NONE)
         .manifest_required()
         .expect("failed to embed resources");
-    
+
     // Try to get a short git revision; on failure, set to "unknown".
     let rev = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])

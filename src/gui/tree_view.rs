@@ -31,7 +31,7 @@ pub struct TreeRenderContext<'a> {
 }
 
 /// Build a tree from relative paths, storing full paths for files
-#[must_use] 
+#[must_use]
 pub fn build_path_tree(paths: &[PathBuf], base_path: &Path) -> TreeNode {
     let mut root = TreeNode::default();
 
@@ -311,7 +311,7 @@ fn open_in_explorer(path: &Path) {
 
 /// Group image files by which input directory they belong to.
 /// Returns a list of (`input_path`, `relative_file_paths`) tuples.
-#[must_use] 
+#[must_use]
 pub fn group_files_by_input(
     input_paths: &[PathBuf],
     image_files: &[PathBuf],
@@ -357,8 +357,10 @@ pub fn show_input_group_with_cache(
 ) -> TreeResult {
     let mut result = TreeResult::default();
 
-    let display_name = input_path
-        .file_name().map_or_else(|| input_path.display().to_string(), |s| s.to_string_lossy().to_string());
+    let display_name = input_path.file_name().map_or_else(
+        || input_path.display().to_string(),
+        |s| s.to_string_lossy().to_string(),
+    );
 
     let parent_path = input_path
         .parent()
@@ -401,7 +403,7 @@ pub struct FileRenameInfo {
 }
 
 /// Group files with their rename status by input directory
-#[must_use] 
+#[must_use]
 pub fn group_files_with_renames(
     input_paths: &[PathBuf],
     original_files: &[PathBuf],
@@ -457,7 +459,7 @@ pub struct RenameTreeNode {
 }
 
 /// Build a tree from files with rename info
-#[must_use] 
+#[must_use]
 pub fn build_rename_tree(files: &[FileRenameInfo], input_path: &Path) -> RenameTreeNode {
     let mut root = RenameTreeNode::default();
 
@@ -644,8 +646,10 @@ pub fn show_rename_group_with_output_path(
 ) -> TreeResult {
     let mut result = TreeResult::default();
 
-    let display_name = output_path
-        .file_name().map_or_else(|| output_path.display().to_string(), |s| s.to_string_lossy().to_string());
+    let display_name = output_path.file_name().map_or_else(
+        || output_path.display().to_string(),
+        |s| s.to_string_lossy().to_string(),
+    );
 
     let parent_path = output_path
         .parent()

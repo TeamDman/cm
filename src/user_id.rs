@@ -55,7 +55,7 @@ impl UserId {
         Ok(UserId(id))
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }

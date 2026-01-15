@@ -23,7 +23,7 @@ pub fn event_collector() -> EventCollector {
 }
 
 /// Generate a default JSON log filename with timestamp
-#[must_use] 
+#[must_use]
 pub fn default_json_log_path() -> PathBuf {
     let timestamp = Local::now().format("%Y-%m-%d_%Hh%Mm%Ss").to_string();
     PathBuf::from(format!("cm_log_{timestamp}.jsonl"))

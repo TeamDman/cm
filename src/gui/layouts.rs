@@ -253,9 +253,10 @@ fn list_names_in_dir(dir: &Path) -> Vec<String> {
             let p = e.path();
             if let Some(ext) = p.extension()
                 && ext == "layout"
-                    && let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
-                        out.push(desanitize_name(stem));
-                    }
+                && let Some(stem) = p.file_stem().and_then(|s| s.to_str())
+            {
+                out.push(desanitize_name(stem));
+            }
         }
     }
     out
