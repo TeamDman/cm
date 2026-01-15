@@ -31,6 +31,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::PathBuf;
 use tracing::Level;
+use tracing::debug;
 use tracing::error;
 use tracing::info;
 
@@ -40,19 +41,26 @@ use tracing::info;
 /// Returns an error if the GUI fails to start or run.
 pub fn run_gui() -> eyre::Result<()> {
     info!("Starting CM GUI");
-    let native_options = eframe::NativeOptions::default();
+    // Create a dedicated runtime and run the GUI
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let native_options = eframe::NativeOptions::default();
 
-    let res = tokio::task::block_in_place(move || {
-        eframe::run_native(
-            "CM - Creative Memories Photo Manager",
-            native_options,
-            Box::new(|cc| Ok(Box::new(CmApp::new(cc)))),
-        )
-        .map_err(|e| eyre!("Failed to run eframe: {}", e))
+        let res = tokio::task::block_in_place(move || {
+            eframe::run_native(
+                "CM - Creative Memories Photo Manager",
+                native_options,
+                Box::new(|cc| Ok(Box::new(CmApp::new(cc)))),
+            )
+            .map_err(|e| eyre!("Failed to run eframe: {}", e))
+        });
+
+        res.expect("GUI runtime failed");
+
+        info!("GUI exited");
+        debug!("Finishing process aggressively, any unfinished tasks are pooched");
+        std::process::exit(0);
     });
-
-    res?;
-    info!("GUI exited");
     Ok(())
 }
 
