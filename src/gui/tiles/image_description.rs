@@ -40,13 +40,13 @@ impl ExifData {
 
 /// Read EXIF data from an image file
 fn read_exif_data(path: &Path) -> Result<ExifData, String> {
-    let file = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let file = File::open(path).map_err(|e| format!("Failed to open file: {e}"))?;
     let mut bufreader = BufReader::new(file);
 
     let exif_reader = exif::Reader::new();
     let exif = exif_reader
         .read_from_container(&mut bufreader)
-        .map_err(|e| format!("Failed to read EXIF: {}", e))?;
+        .map_err(|e| format!("Failed to read EXIF: {e}"))?;
 
     let mut data = ExifData::default();
 
@@ -228,9 +228,7 @@ pub fn draw_image_description_tile(ui: &mut egui::Ui, state: &AppState) {
     ui.horizontal(|ui| {
         ui.label("📷");
         let filename = selected_path
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| selected_path.display().to_string());
+            .file_name().map_or_else(|| selected_path.display().to_string(), |s| s.to_string_lossy().to_string());
         let response = ui.strong(&filename);
         response.on_hover_text(selected_path.display().to_string());
     });
@@ -246,7 +244,7 @@ pub fn draw_image_description_tile(ui: &mut egui::Ui, state: &AppState) {
             }
         }
         Err(e) => {
-            ui.colored_label(egui::Color32::YELLOW, format!("⚠ {}", e));
+            ui.colored_label(egui::Color32::YELLOW, format!("⚠ {e}"));
             ui.add_space(8.0);
             ui.label("This image may not contain EXIF data, or the format is not supported.");
         }
@@ -301,7 +299,7 @@ fn draw_exif_section(
     egui::CollapsingHeader::new(format!("{} ({})", title, entries.len()))
         .default_open(default_open)
         .show(ui, |ui| {
-            egui::Grid::new(format!("exif_grid_{}", title))
+            egui::Grid::new(format!("exif_grid_{title}"))
                 .num_columns(2)
                 .striped(true)
                 .spacing([8.0, 4.0])

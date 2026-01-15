@@ -3,7 +3,6 @@ use chrono::DateTime;
 use chrono::Duration;
 use chrono::Local;
 use chrono::Utc;
-use once_cell::sync::Lazy;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -55,6 +54,7 @@ impl UserId {
         Ok(UserId(id))
     }
 
+    #[must_use] 
     pub fn as_uuid(&self) -> &Uuid {
         &self.0
     }
@@ -62,7 +62,7 @@ impl UserId {
 
 use tracing::warn;
 
-pub static USER_ID: Lazy<UserId> = Lazy::new(|| match UserId::load() {
+pub static USER_ID: std::sync::LazyLock<UserId> = std::sync::LazyLock::new(|| match UserId::load() {
     Ok(u) => u,
     Err(e) => {
         warn!(

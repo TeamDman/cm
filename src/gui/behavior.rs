@@ -1,4 +1,4 @@
-//! Tile behavior and pane definitions for egui_tiles
+//! Tile behavior and pane definitions for `egui_tiles`
 
 use crate::gui::state::AppState;
 use crate::gui::tiles;
@@ -101,7 +101,7 @@ pub struct CmBehavior<'a> {
     pub thumbnail_textures: &'a mut HashMap<PathBuf, TextureHandle>,
 }
 
-impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
+impl egui_tiles::Behavior<CmPane> for CmBehavior<'_> {
     fn tab_title_for_pane(&mut self, pane: &CmPane) -> egui::WidgetText {
         pane.title().into()
     }
@@ -115,14 +115,14 @@ impl<'a> egui_tiles::Behavior<CmPane> for CmBehavior<'a> {
         match pane {
             CmPane::InputPaths => tiles::draw_input_paths_tile(ui, self.state),
             CmPane::InputImages => {
-                tiles::draw_input_images_tile(ui, self.state, self.thumbnail_textures)
+                tiles::draw_input_images_tile(ui, self.state, self.thumbnail_textures);
             }
             CmPane::ImageManipulation => tiles::draw_image_manipulation_tile(ui, self.state),
             CmPane::RenameRules => tiles::draw_rename_rules_tile(ui, self.state),
             CmPane::MaxNameLength => tiles::draw_max_name_length_tile(ui, self.state),
             CmPane::OutputPreview => tiles::draw_output_preview_tile(ui, self.state),
             CmPane::InputImagePreview => {
-                tiles::draw_input_image_preview_tile(ui, self.state, self.input_pan_zoom)
+                tiles::draw_input_image_preview_tile(ui, self.state, self.input_pan_zoom);
             }
             CmPane::ThresholdPreview => tiles::draw_threshold_preview_tile(
                 ui,

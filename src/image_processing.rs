@@ -73,7 +73,7 @@ pub struct ProcessingSettings {
 fn detect_format_from_path(path: &Path) -> ImageFormat {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| match ext.to_lowercase().as_str() {
+        .map_or(ImageFormat::Png, |ext| match ext.to_lowercase().as_str() {
             "jpg" | "jpeg" => ImageFormat::Jpeg,
             "png" => ImageFormat::Png,
             "webp" => ImageFormat::WebP,
@@ -82,7 +82,6 @@ fn detect_format_from_path(path: &Path) -> ImageFormat {
             "tiff" | "tif" => ImageFormat::Tiff,
             _ => ImageFormat::Png, // Default to PNG for unknown formats
         })
-        .unwrap_or(ImageFormat::Png)
 }
 
 /// Downsample an image for preview while maintaining aspect ratio
@@ -95,9 +94,9 @@ fn downsample_for_preview(img: &DynamicImage) -> DynamicImage {
     }
 
     // Calculate new dimensions maintaining aspect ratio
-    let scale = (MAX_PREVIEW_SIZE as f64 / width.max(height) as f64).min(1.0);
-    let new_width = (width as f64 * scale) as u32;
-    let new_height = (height as f64 * scale) as u32;
+    let scale = (f64::from(MAX_PREVIEW_SIZE) / f64::from(width.max(height))).min(1.0);
+    let new_width = (f64::from(width) * scale) as u32;
+    let new_height = (f64::from(height) * scale) as u32;
 
     img.resize(new_width, new_height, image::imageops::FilterType::Triangle)
 }
@@ -156,14 +155,13 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
     let mut data = encode_image(&processed, output_format, settings.jpeg_quality)?;
 
     // If we have a description, embed it as EXIF metadata
-    if let Some(ref description) = settings.description {
-        if !description.is_empty() {
+    if let Some(ref description) = settings.description
+        && !description.is_empty() {
             // Read existing EXIF from source if available
             let existing_exif = read_exif_bytes(path);
             let exif_data = merge_description_into_exif(existing_exif.as_deref(), description);
             data = embed_exif(&data, output_format, &exif_data)?;
         }
-    }
 
     let estimated_size = data.len() as u64;
 
@@ -236,7 +234,7 @@ fn read_exif_bytes(path: &Path) -> Option<Vec<u8>> {
     }
 }
 
-/// Create a minimal EXIF segment with ImageDescription tag
+/// Create a minimal EXIF segment with `ImageDescription` tag
 /// The EXIF format is complex; this creates a simple TIFF-based EXIF structure
 fn create_exif_with_description(description: &str) -> Vec<u8> {
     // EXIF uses TIFF format. We'll create a minimal structure:
@@ -380,7 +378,7 @@ fn create_threshold_preview(
             min_y,
             max_x,
             max_y,
-            box_thickness as u32,
+            u32::from(box_thickness),
         );
     }
 
@@ -431,10 +429,10 @@ fn sample_edge_color(img: &RgbaImage) -> Rgba<u8> {
     let mut a_sum: u64 = 0;
 
     for pixel in &samples {
-        r_sum += pixel[0] as u64;
-        g_sum += pixel[1] as u64;
-        b_sum += pixel[2] as u64;
-        a_sum += pixel[3] as u64;
+        r_sum += u64::from(pixel[0]);
+        g_sum += u64::from(pixel[1]);
+        b_sum += u64::from(pixel[2]);
+        a_sum += u64::from(pixel[3]);
     }
 
     let count = samples.len() as u64;
@@ -458,15 +456,15 @@ fn is_background_pixel_with_threshold(
     }
 
     // Calculate color distance from background
-    let dr = (pixel[0] as i32 - background[0] as i32).abs();
-    let dg = (pixel[1] as i32 - background[1] as i32).abs();
-    let db = (pixel[2] as i32 - background[2] as i32).abs();
+    let dr = (i32::from(pixel[0]) - i32::from(background[0])).abs();
+    let dg = (i32::from(pixel[1]) - i32::from(background[1])).abs();
+    let db = (i32::from(pixel[2]) - i32::from(background[2])).abs();
 
     // Use Euclidean distance
-    let distance = ((dr * dr + dg * dg + db * db) as f64).sqrt();
+    let distance = f64::from(dr * dr + dg * dg + db * db).sqrt();
 
     // Compare against threshold
-    distance < threshold as f64
+    distance < f64::from(threshold)
 }
 
 /// Find content bounds using threshold - optimized edge-inward scanning
@@ -584,6 +582,7 @@ fn draw_bounding_box(
 }
 
 /// Crop an image to its content using threshold-based detection
+#[must_use] 
 pub fn crop_to_content_with_threshold(
     img: &DynamicImage,
     threshold: u8,
@@ -617,6 +616,7 @@ pub fn crop_to_content_with_threshold(
 }
 
 /// Crop an image to its content, removing whitespace/transparent padding
+#[must_use] 
 pub fn crop_to_content(img: &DynamicImage) -> DynamicImage {
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
@@ -671,6 +671,7 @@ fn is_background_pixel(pixel: &image::Rgba<u8>) -> bool {
 }
 
 /// Get the output directory for an input path (appends -output to directory name)
+#[must_use] 
 pub fn get_output_dir(input_path: &Path) -> PathBuf {
     if let Some(parent) = input_path.parent()
         && let Some(name) = input_path.file_name()
@@ -689,6 +690,7 @@ pub fn get_output_dir(input_path: &Path) -> PathBuf {
 }
 
 /// Get the output path for a file given its input path and the original input root
+#[must_use] 
 pub fn get_output_path(
     file_path: &Path,
     input_root: &Path,
@@ -710,7 +712,7 @@ pub fn get_output_path(
     Some(output_path)
 }
 /// Process and write all images
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub fn process_all_images(
     input_files: &[PathBuf],
     renamed_files: &[PathBuf],
@@ -821,9 +823,9 @@ pub fn load_image_metadata(path: &Path, thumbnail_size: u32) -> Result<CachedIma
     let thumbnail = if width <= thumbnail_size && height <= thumbnail_size {
         img
     } else {
-        let scale = (thumbnail_size as f64 / width.max(height) as f64).min(1.0);
-        let new_width = (width as f64 * scale) as u32;
-        let new_height = (height as f64 * scale) as u32;
+        let scale = (f64::from(thumbnail_size) / f64::from(width.max(height))).min(1.0);
+        let new_width = (f64::from(width) * scale) as u32;
+        let new_height = (f64::from(height) * scale) as u32;
         img.resize(new_width, new_height, image::imageops::FilterType::Triangle)
     };
 

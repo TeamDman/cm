@@ -17,7 +17,7 @@ pub fn draw_rename_rules_tile(ui: &mut egui::Ui, state: &mut AppState) {
             let mut rules_to_remove = Vec::new();
             let mut rules_changed = Vec::new();
 
-            for rule in state.rename_rules.iter_mut() {
+            for rule in &mut state.rename_rules {
                 let mut rule_changed = false;
 
                 ui.group(|ui| {

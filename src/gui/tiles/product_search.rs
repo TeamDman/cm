@@ -28,9 +28,7 @@ pub fn suggest_search(filename: &str) -> SearchArgs {
 
     // Use file stem (strip extension) when possible
     let stem = Path::new(filename)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| filename.to_string());
+        .file_stem().map_or_else(|| filename.to_string(), |s| s.to_string_lossy().to_string());
 
     if let Some(cap) = re_sku.captures(&stem) {
         let sku = cap.get(1).unwrap().as_str().to_string();
@@ -43,7 +41,7 @@ pub fn suggest_search(filename: &str) -> SearchArgs {
     }
 
     // Replace hyphens/underscores with spaces first
-    let with_spaces = stem.replace('-', " ").replace("_", " ");
+    let with_spaces = stem.replace(['-', '_'], " ");
 
     // Insert spaces for camel/pascal boundaries. Do the acronym rule first so
     // ALL-CAPS words aren't split internally ("ALL" stays "ALL").
@@ -96,7 +94,7 @@ fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs
                 let _ = tx.send(BackgroundMessage::ProductSearchResult {
                     result: None,
                     pretty: None,
-                    error: Some(format!("Search failed: {}", e)),
+                    error: Some(format!("Search failed: {e}")),
                     received_at: Local::now(),
                 });
             }
@@ -179,7 +177,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Suggested:").strong());
                     if let Some(sku) = &suggestion.sku {
-                        ui.label(format!("SKU: {}", sku));
+                        ui.label(format!("SKU: {sku}"));
                     } else if let Some(q) = &suggestion.query {
                         ui.label(q);
                     }
@@ -188,8 +186,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     if ui
                         .checkbox(&mut state.product_search_use_suggestion, "Use suggested")
                         .changed()
-                    {
-                        if state.product_search_use_suggestion {
+                        && state.product_search_use_suggestion {
                             if let Some(s) = &suggestion.sku {
                                 state.product_search_sku = s.clone();
                             }
@@ -197,7 +194,6 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                                 state.product_search_query = q.clone();
                             }
                         }
-                    }
 
                     // Keep fields synced to the latest suggestion while the option is active
                     if state.product_search_use_suggestion {

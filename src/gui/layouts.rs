@@ -151,7 +151,7 @@ impl LayoutManager {
         let mut i = 1;
         while self.layout_file_for_custom(&new_name).exists() {
             i += 1;
-            new_name = format!("{} {}", name, i);
+            new_name = format!("{name} {i}");
         }
         let path = self.layout_file_for_custom(&new_name);
         let text = facet_json::to_string(layout)?;
@@ -209,7 +209,7 @@ impl LayoutManager {
         _tree_id: impl Into<Id>,
     ) -> eyre::Result<String> {
         let layout = self.load_named(preset_name)?;
-        let new_name = format!("Custom from {}", preset_name);
+        let new_name = format!("Custom from {preset_name}");
         let new_name = self.create_custom_from_layout(&new_name, &layout)?;
         self.active = Some(new_name.clone());
         Ok(new_name)
@@ -251,13 +251,11 @@ fn list_names_in_dir(dir: &Path) -> Vec<String> {
     if let Ok(iter) = fs::read_dir(dir) {
         for e in iter.flatten() {
             let p = e.path();
-            if let Some(ext) = p.extension() {
-                if ext == "layout" {
-                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+            if let Some(ext) = p.extension()
+                && ext == "layout"
+                    && let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
                         out.push(desanitize_name(stem));
                     }
-                }
-            }
         }
     }
     out

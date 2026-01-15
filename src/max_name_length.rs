@@ -1,5 +1,4 @@
 use crate::app_home::APP_HOME;
-use once_cell::sync::Lazy;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -18,7 +17,7 @@ impl MaxNameLength {
     const FILE_NAME: &'static str = "max_name_length.txt";
 
     /// Loads resolving rules:
-    /// 1. If $CM_MAX_NAME_LENGTH is set -> use it (and DO NOT create file)
+    /// 1. If $`CM_MAX_NAME_LENGTH` is set -> use it (and DO NOT create file)
     /// 2. Otherwise, look for `${config_dir}/max_name_length.txt`
     ///    - if file exists, parse its trimmed contents
     ///    - otherwise, create the file containing the default and return default
@@ -27,12 +26,11 @@ impl MaxNameLength {
         if let Ok(envv) = env::var("CM_MAX_NAME_LENGTH") {
             if let Ok(v) = envv.trim().parse::<usize>() {
                 return Ok(MaxNameLength(v));
-            } else {
-                warn!(
-                    "Invalid CM_MAX_NAME_LENGTH '{}', falling back to file/default",
-                    envv
-                );
             }
+            warn!(
+                "Invalid CM_MAX_NAME_LENGTH '{}', falling back to file/default",
+                envv
+            );
         }
 
         // 2. Config file under config_dir/teamdman/cm/max_name_length.txt
@@ -41,13 +39,12 @@ impl MaxNameLength {
             let s = fs::read_to_string(&path)?.trim().to_string();
             if let Ok(v) = s.parse::<usize>() {
                 return Ok(MaxNameLength(v));
-            } else {
-                warn!(
-                    "Invalid {} contents: '{}', resetting to default",
-                    path.display(),
-                    s
-                );
             }
+            warn!(
+                "Invalid {} contents: '{}', resetting to default",
+                path.display(),
+                s
+            );
         }
 
         // create containing default
@@ -85,6 +82,7 @@ impl MaxNameLength {
     }
 
     /// Convenience accessor
+    #[must_use] 
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -92,7 +90,7 @@ impl MaxNameLength {
 
 /// Public static that initializes using the rules described above.
 /// Backed by `AtomicUsize` so the `set_to` method can update it at runtime.
-pub static MAX_NAME_LENGTH: Lazy<AtomicUsize> = Lazy::new(|| {
+pub static MAX_NAME_LENGTH: std::sync::LazyLock<AtomicUsize> = std::sync::LazyLock::new(|| {
     let initial = MaxNameLength::load()
         .map(|m| m.as_usize())
         .unwrap_or(MaxNameLength::DEFAULT);

@@ -1,4 +1,4 @@
-//! CM GUI using egui_tiles for layout management
+//! CM GUI using `egui_tiles` for layout management
 
 mod behavior;
 mod layouts;
@@ -58,11 +58,11 @@ struct CmApp {
     state: AppState,
     /// Texture handle for output preview (to show cropped images)
     output_texture: Option<TextureHandle>,
-    /// Path of the image currently loaded in output_texture
+    /// Path of the image currently loaded in `output_texture`
     output_texture_path: Option<PathBuf>,
     /// Texture handle for threshold preview
     threshold_texture: Option<TextureHandle>,
-    /// Path of the image currently loaded in threshold_texture
+    /// Path of the image currently loaded in `threshold_texture`
     threshold_texture_path: Option<PathBuf>,
     /// Pan/zoom state for input preview
     input_pan_zoom: tiles::PanZoomState,
@@ -91,22 +91,19 @@ impl CmApp {
         // Initialize layout manager and ensure we have at least one preset and one custom
         let mut layout_manager = LayoutManager::new();
         // If no presets exist, save a "Preset 1" based on current tree
-        if layout_manager.list_presets().is_empty() {
-            if let Some(mut preset_layout) = Layout::from_tree(&tree) {
+        if layout_manager.list_presets().is_empty()
+            && let Some(mut preset_layout) = Layout::from_tree(&tree) {
                 preset_layout.name = "Preset 1".to_string();
                 let _ = layout_manager.save_preset("Preset 1", &preset_layout);
             }
-        }
         // If no custom layouts exist, create a Custom 1 from the first preset
-        if layout_manager.list_custom().is_empty() {
-            if let Some(preset_name) = layout_manager.list_presets().get(0).cloned() {
-                if let Ok(new_name) =
+        if layout_manager.list_custom().is_empty()
+            && let Some(preset_name) = layout_manager.list_presets().first().cloned()
+                && let Ok(new_name) =
                     layout_manager.activate_preset_as_custom(&preset_name, tree.id())
                 {
                     layout_manager.set_active(&new_name);
                 }
-            }
-        }
 
         // Get current event count so we don't show toasts for old events
         let initial_event_count = crate::tracing::event_collector().events().len();
@@ -187,13 +184,12 @@ impl eframe::App for CmApp {
                     } else {
                         for name in customs {
                             if Some(name.as_str()) == self.layout_manager.active_name() {
-                                ui.label(format!("{} (active)", name));
-                            } else if ui.button(&name).clicked() {
-                                if let Ok(layout) = self.layout_manager.load_named(&name) {
+                                ui.label(format!("{name} (active)"));
+                            } else if ui.button(&name).clicked()
+                                && let Ok(layout) = self.layout_manager.load_named(&name) {
                                     self.tree = layout.apply_to_tree(self.tree.id());
                                     self.layout_manager.set_active(&name);
                                 }
-                            }
                         }
                     }
 
@@ -201,23 +197,20 @@ impl eframe::App for CmApp {
 
                     // Presets
                     for preset in self.layout_manager.list_presets() {
-                        if ui.button(&preset).clicked() {
-                            if let Ok(new_name) = self
+                        if ui.button(&preset).clicked()
+                            && let Ok(new_name) = self
                                 .layout_manager
                                 .activate_preset_as_custom(&preset, self.tree.id())
-                            {
-                                if let Ok(layout) = self.layout_manager.load_named(&new_name) {
+                                && let Ok(layout) = self.layout_manager.load_named(&new_name) {
                                     self.tree = layout.apply_to_tree(self.tree.id());
                                     self.layout_manager.set_active(&new_name);
                                 }
-                            }
-                        }
                     }
 
                     ui.separator();
 
-                    if ui.button("Create New").clicked() {
-                        if let Some(layout) = Layout::from_tree(&self.tree) {
+                    if ui.button("Create New").clicked()
+                        && let Some(layout) = Layout::from_tree(&self.tree) {
                             let name =
                                 format!("Custom {}", self.layout_manager.list_custom().len() + 1);
                             if let Ok(new_name) = self
@@ -227,7 +220,6 @@ impl eframe::App for CmApp {
                                 self.layout_manager.set_active(&new_name);
                             }
                         }
-                    }
 
                     if ui.button("Delete Active").clicked() {
                         let _ = self.layout_manager.delete_active();
@@ -335,8 +327,7 @@ impl eframe::App for CmApp {
                 let message = event
                     .fields
                     .get("message")
-                    .map(|s| s.as_str())
-                    .unwrap_or("")
+                    .map_or("", std::string::String::as_str)
                     .to_string();
                 self.toasts.add(
                     Toast::default().kind(kind).text(message).options(

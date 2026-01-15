@@ -8,7 +8,6 @@ use arbitrary::Arbitrary;
 use clap::Args;
 use clap::ValueEnum;
 use facet_pretty::FacetPretty;
-use once_cell::sync::Lazy;
 use std::ffi::OsString;
 use tokio::sync::Mutex;
 use tracing::Instrument;
@@ -19,7 +18,7 @@ use tracing::info;
 use tracing::span;
 
 /// Global mutex to serialize product searches (maximizes cache hits when multiple images share SKUs)
-static SEARCH_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+static SEARCH_MUTEX: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 #[derive(ValueEnum, Arbitrary, Clone, PartialEq, Debug)]
 pub enum OutputFormat {
@@ -77,7 +76,7 @@ impl SearchArgs {
                 OutputFormat::Json => {
                     let json = facet_json::to_string(&result)
                         .map_err(|e| eyre::eyre!("Failed to serialize result: {}", e))?;
-                    println!("{}", json);
+                    println!("{json}");
                 }
             }
 
@@ -101,8 +100,7 @@ impl SearchArgs {
         let user = USER_ID.as_uuid().to_string();
         let session = SESSION_ID.as_uuid().to_string();
         let url = format!(
-            "https://{}.a.searchspring.io/api/search/search.json",
-            site_id
+            "https://{site_id}.a.searchspring.io/api/search/search.json"
         );
         let git_rev = option_env!("GIT_REVISION").unwrap_or("unknown");
         let user_agent = format!(
@@ -192,7 +190,7 @@ impl SearchArgs {
         Self::parse_response(&body)
     }
 
-    /// Parse the JSON response body into SearchResultOk.
+    /// Parse the JSON response body into `SearchResultOk`.
     fn parse_response(body: &str) -> eyre::Result<SearchResultOk> {
         facet_json::from_str(body).map_err(|e| eyre::eyre!("Failed to parse response: {}", e))
     }

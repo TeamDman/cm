@@ -5,7 +5,6 @@
 //! - Allow diagnosis of deserialization issues by examining stored plaintext
 
 use directories_next::ProjectDirs;
-use once_cell::sync::Lazy;
 use sha2::Digest;
 use sha2::Sha256;
 use std::path::Path;
@@ -14,7 +13,7 @@ use tracing::debug;
 use tracing::warn;
 
 /// The cache home directory for API responses.
-pub static CACHE_HOME: Lazy<CacheHome> = Lazy::new(|| match CacheHome::resolve() {
+pub static CACHE_HOME: std::sync::LazyLock<CacheHome> = std::sync::LazyLock::new(|| match CacheHome::resolve() {
     Ok(c) => c,
     Err(e) => {
         warn!("Failed to resolve cache home: {}", e);
@@ -27,7 +26,7 @@ pub static CACHE_HOME: Lazy<CacheHome> = Lazy::new(|| match CacheHome::resolve()
 pub struct CacheHome(pub PathBuf);
 
 impl CacheHome {
-    /// Resolve the CacheHome according to:
+    /// Resolve the `CacheHome` according to:
     /// * If `CM_CACHE_DIR` env var is set, use that directory
     /// * Otherwise use the platform `ProjectDirs::cache_dir()` for teamdman/cm
     pub fn resolve() -> eyre::Result<CacheHome> {
@@ -41,7 +40,8 @@ impl CacheHome {
         }
     }
 
-    /// Returns the path to the api_responses subdirectory.
+    /// Returns the path to the `api_responses` subdirectory.
+    #[must_use] 
     pub fn api_responses_dir(&self) -> PathBuf {
         self.0.join("api_responses")
     }
@@ -78,21 +78,25 @@ impl CacheEntry {
     }
 
     /// Path to the response body file.
+    #[must_use] 
     pub fn response_path(&self) -> PathBuf {
         self.dir.join("response.txt")
     }
 
     /// Path to the URL file.
+    #[must_use] 
     pub fn url_path(&self) -> PathBuf {
         self.dir.join("url.txt")
     }
 
     /// Path to the timestamps file.
+    #[must_use] 
     pub fn timestamps_path(&self) -> PathBuf {
         self.dir.join("timestamps.txt")
     }
 
     /// Check if a cached response exists.
+    #[must_use] 
     pub fn exists(&self) -> bool {
         self.response_path().exists()
     }
@@ -134,7 +138,7 @@ impl CacheEntry {
             .create(true)
             .append(true)
             .open(self.timestamps_path())?;
-        writeln!(file, "{}", timestamp)?;
+        writeln!(file, "{timestamp}")?;
         Ok(())
     }
 }

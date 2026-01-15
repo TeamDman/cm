@@ -1,7 +1,6 @@
 mod rename_rule;
 
 use crate::app_home::AppHome;
-use once_cell::sync::Lazy;
 pub use rename_rule::*;
 use std::fs;
 use std::io::Write;
@@ -13,7 +12,7 @@ const DIR_NAME: &str = "rename-rules";
 const FILE_EXT: &str = "txt";
 
 // Cache for global rules when accessed via APP_HOME
-static GLOBAL_RULE_CACHE: Lazy<Mutex<Option<Vec<RenameRule>>>> = Lazy::new(|| Mutex::new(None));
+static GLOBAL_RULE_CACHE: std::sync::LazyLock<Mutex<Option<Vec<RenameRule>>>> = std::sync::LazyLock::new(|| Mutex::new(None));
 /// Ensure the rename rules directory exists and return its path
 fn dir_for(home: &AppHome) -> eyre::Result<PathBuf> {
     let dir = home.file_path(DIR_NAME);
@@ -32,7 +31,7 @@ pub fn rules_dir(home: &AppHome) -> eyre::Result<PathBuf> {
 fn list_rule_files(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
     let dir = dir_for(home)?;
     let mut v: Vec<_> = fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|d| d.path())
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some(FILE_EXT))
         .collect();
@@ -51,7 +50,7 @@ pub fn add_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<Uuid> {
         .truncate(true)
         .open(&path)?;
     let content = rule.to_file_text();
-    writeln!(f, "{}", content)?;
+    writeln!(f, "{content}")?;
     // invalidate cache if default app home
     if home.is_default() {
         let mut cache = GLOBAL_RULE_CACHE.lock().unwrap();
@@ -63,7 +62,7 @@ pub fn add_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<Uuid> {
 /// Remove a rule by UUID
 pub fn remove_rule(home: &AppHome, id: Uuid) -> eyre::Result<bool> {
     let dir = dir_for(home)?;
-    let path = dir.join(format!("{}.{}", id, FILE_EXT));
+    let path = dir.join(format!("{id}.{FILE_EXT}"));
     if !path.exists() {
         return Ok(false);
     }
@@ -86,7 +85,7 @@ pub fn write_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<()> {
         .truncate(true)
         .open(&path)?;
     let content = rule.to_file_text();
-    write!(f, "{}", content)?;
+    write!(f, "{content}")?;
 
     // invalidate cache if default app home
     if home.is_default() {
@@ -114,7 +113,7 @@ pub fn list_rules(home: &AppHome) -> eyre::Result<Vec<(usize, RenameRule)>> {
 
     let files = list_rule_files(home)?;
     let mut out_rules = Vec::new();
-    for p in files.iter() {
+    for p in &files {
         if let Ok(text) = std::fs::read_to_string(p)
             && let Ok(mut rule) = RenameRule::from_file_text(&text)
         {

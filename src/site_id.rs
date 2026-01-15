@@ -1,5 +1,4 @@
 use crate::app_home::APP_HOME;
-use once_cell::sync::Lazy;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -15,7 +14,7 @@ impl SiteId {
     pub const DEFAULT: &'static str = "4y9u7l";
 
     /// Loads resolving rules:
-    /// 1. If $CM_SITE_ID is set -> use it (and DO NOT create file)
+    /// 1. If $`CM_SITE_ID` is set -> use it (and DO NOT create file)
     /// 2. Otherwise, look for `${config_dir}/cm_site_id.txt`
     ///    - if file exists, use its trimmed contents
     ///    - otherwise, create the file containing the default and return default
@@ -64,13 +63,14 @@ impl SiteId {
     }
 
     /// Convenience accessor
+    #[must_use] 
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
 /// Public static site id that initializes using the rules described above.
-pub static SITE_ID: Lazy<SiteId> = Lazy::new(|| {
+pub static SITE_ID: std::sync::LazyLock<SiteId> = std::sync::LazyLock::new(|| {
     match SiteId::load() {
         Ok(s) => s,
         Err(e) => {

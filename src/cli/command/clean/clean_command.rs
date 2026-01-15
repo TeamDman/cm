@@ -31,7 +31,7 @@ impl CleanArgs {
                     println!("Would remove: {}", entry.path().display());
                 }
             }
-            println!("\nWould remove {} cache entries", count);
+            println!("\nWould remove {count} cache entries");
         } else {
             let result = clean_cache()?;
             println!(

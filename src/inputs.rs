@@ -12,7 +12,7 @@ fn inputs_file_path(home: &AppHome) -> eyre::Result<PathBuf> {
     Ok(home.file_path("inputs.txt"))
 }
 
-/// Load persisted inputs (one per line). Returns canonicalized PathBufs as stored.
+/// Load persisted inputs (one per line). Returns canonicalized `PathBufs` as stored.
 pub fn load_inputs(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
     let path = inputs_file_path(home)?;
     if !path.exists() {

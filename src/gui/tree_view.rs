@@ -31,6 +31,7 @@ pub struct TreeRenderContext<'a> {
 }
 
 /// Build a tree from relative paths, storing full paths for files
+#[must_use] 
 pub fn build_path_tree(paths: &[PathBuf], base_path: &Path) -> TreeNode {
     let mut root = TreeNode::default();
 
@@ -164,15 +165,15 @@ pub fn show_tree_node_with_cache(
                             format!("🖼 {} ({} {}x{})", name, size_str, info.width, info.height);
                         (label, false, Some(info.clone()))
                     } else if ctx.images_loading.contains(path) {
-                        (format!("⏳ {}", name), true, None)
+                        (format!("⏳ {name}"), true, None)
                     } else {
-                        (format!("🖼 {}", name), false, None)
+                        (format!("🖼 {name}"), false, None)
                     }
                 } else {
-                    (format!("🖼 {}", name), false, None)
+                    (format!("🖼 {name}"), false, None)
                 }
             } else {
-                (format!("🖼 {}", name), false, None)
+                (format!("🖼 {name}"), false, None)
             };
 
             let response = if is_selected {
@@ -287,7 +288,7 @@ fn format_size(bytes: u64) -> String {
     } else if bytes >= KB {
         format!("{:.0}KB", bytes as f64 / KB as f64)
     } else {
-        format!("{}B", bytes)
+        format!("{bytes}B")
     }
 }
 
@@ -309,7 +310,8 @@ fn open_in_explorer(path: &Path) {
 }
 
 /// Group image files by which input directory they belong to.
-/// Returns a list of (input_path, relative_file_paths) tuples.
+/// Returns a list of (`input_path`, `relative_file_paths`) tuples.
+#[must_use] 
 pub fn group_files_by_input(
     input_paths: &[PathBuf],
     image_files: &[PathBuf],
@@ -356,9 +358,7 @@ pub fn show_input_group_with_cache(
     let mut result = TreeResult::default();
 
     let display_name = input_path
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| input_path.display().to_string());
+        .file_name().map_or_else(|| input_path.display().to_string(), |s| s.to_string_lossy().to_string());
 
     let parent_path = input_path
         .parent()
@@ -401,6 +401,7 @@ pub struct FileRenameInfo {
 }
 
 /// Group files with their rename status by input directory
+#[must_use] 
 pub fn group_files_with_renames(
     input_paths: &[PathBuf],
     original_files: &[PathBuf],
@@ -456,6 +457,7 @@ pub struct RenameTreeNode {
 }
 
 /// Build a tree from files with rename info
+#[must_use] 
 pub fn build_rename_tree(files: &[FileRenameInfo], input_path: &Path) -> RenameTreeNode {
     let mut root = RenameTreeNode::default();
 
@@ -613,7 +615,7 @@ pub fn show_rename_tree_node(
 }
 
 /// Show a group of renamed files under an input directory
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub fn show_rename_group(
     ui: &mut egui::Ui,
     input_path: &Path,
@@ -643,9 +645,7 @@ pub fn show_rename_group_with_output_path(
     let mut result = TreeResult::default();
 
     let display_name = output_path
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| output_path.display().to_string());
+        .file_name().map_or_else(|| output_path.display().to_string(), |s| s.to_string_lossy().to_string());
 
     let parent_path = output_path
         .parent()
@@ -657,12 +657,11 @@ pub fn show_rename_group_with_output_path(
 
     let mut header_text = format!("📁 {} ({} files", display_name, files.len(),);
     if renamed_count > 0 {
-        header_text.push_str(&format!(", {} renamed", renamed_count));
+        header_text.push_str(&format!(", {renamed_count} renamed"));
     }
     if too_long_count > 0 {
         header_text.push_str(&format!(
-            ", {} too long (>{} chars)",
-            too_long_count, max_name_length
+            ", {too_long_count} too long (>{max_name_length} chars)"
         ));
     }
     header_text.push(')');

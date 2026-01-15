@@ -1,5 +1,4 @@
 use directories_next::ProjectDirs;
-use once_cell::sync::Lazy;
 use std::env;
 use std::ops::Deref;
 use std::path::Path;
@@ -10,7 +9,8 @@ use std::path::PathBuf;
 pub struct AppHome(pub PathBuf);
 
 impl AppHome {
-    /// Returns a PathBuf for a filename under the app config dir
+    /// Returns a `PathBuf` for a filename under the app config dir
+    #[must_use] 
     pub fn file_path(&self, name: &str) -> PathBuf {
         self.0.join(name)
     }
@@ -21,7 +21,7 @@ impl AppHome {
         Ok(())
     }
 
-    /// Resolve the AppHome according to the same rules used previously:
+    /// Resolve the `AppHome` according to the same rules used previously:
     /// * If `CM_CONFIG_DIR` env var is set, use that directory
     /// * Otherwise use the platform `ProjectDirs::config_dir()` for teamdman/cm
     pub fn resolve() -> eyre::Result<AppHome> {
@@ -35,7 +35,8 @@ impl AppHome {
         }
     }
 
-    /// Returns true if this AppHome equals the global APP_HOME
+    /// Returns true if this `AppHome` equals the global `APP_HOME`
+    #[must_use] 
     pub fn is_default(&self) -> bool {
         // Compare absolute paths
         self.0 == APP_HOME.0
@@ -52,8 +53,8 @@ impl Deref for AppHome {
 
 use tracing::warn;
 
-/// Cached AppHome instance
-pub static APP_HOME: Lazy<AppHome> = Lazy::new(|| match AppHome::resolve() {
+/// Cached `AppHome` instance
+pub static APP_HOME: std::sync::LazyLock<AppHome> = std::sync::LazyLock::new(|| match AppHome::resolve() {
     Ok(a) => a,
     Err(e) => {
         warn!("Warning: failed to resolve app home: {}", e);

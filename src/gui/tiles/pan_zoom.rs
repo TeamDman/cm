@@ -41,12 +41,12 @@ impl PanZoomState {
         self.dirty = true;
     }
 
-    /// Get the actual zoom factor (fit_scale * zoom_multiplier)
+    /// Get the actual zoom factor (`fit_scale` * `zoom_multiplier`)
     pub fn actual_zoom(&self) -> f32 {
         self.fit_scale * self.zoom_multiplier
     }
 
-    /// Sync from another pan/zoom state (copies multiplier and offset, not fit_scale)
+    /// Sync from another pan/zoom state (copies multiplier and offset, not `fit_scale`)
     pub fn sync_from(&mut self, other: &PanZoomState) {
         self.zoom_multiplier = other.zoom_multiplier;
         self.offset = other.offset;
@@ -139,8 +139,7 @@ pub fn draw_pan_zoom_image(
     if response.hovered() {
         let zoom_percent = (actual_zoom * 100.0).round() as i32;
         response.on_hover_text(format!(
-            "{}% - Scroll to zoom, drag to pan, double-click to reset",
-            zoom_percent
+            "{zoom_percent}% - Scroll to zoom, drag to pan, double-click to reset"
         ));
     }
 }
@@ -251,8 +250,7 @@ pub fn draw_pan_zoom_image_uri(
     if response.hovered() {
         let zoom_percent = (actual_zoom * 100.0).round() as i32;
         response.on_hover_text(format!(
-            "{}% - Scroll to zoom, drag to pan, double-click to reset",
-            zoom_percent
+            "{zoom_percent}% - Scroll to zoom, drag to pan, double-click to reset"
         ));
     }
 }

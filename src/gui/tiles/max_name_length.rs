@@ -33,7 +33,7 @@ pub fn draw_max_name_length_tile(ui: &mut egui::Ui, state: &mut AppState) {
 
     // Show current value info
     let current = MAX_NAME_LENGTH.load(Ordering::SeqCst);
-    ui.label(format!("Current global value: {}", current));
+    ui.label(format!("Current global value: {current}"));
 
     ui.add_space(8.0);
 

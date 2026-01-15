@@ -2,7 +2,6 @@ use crate::cli::json_log_behaviour::JsonLogBehaviour;
 use chrono::Local;
 use egui_tracing::tracing::collector::EventCollector;
 use eyre::Result;
-use once_cell::sync::Lazy;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,17 +14,18 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 
 // Global collector used by the GUI logs widget. Cloneable cheap handle.
-static EVENT_COLLECTOR: Lazy<EventCollector> = Lazy::new(EventCollector::default);
+static EVENT_COLLECTOR: std::sync::LazyLock<EventCollector> = std::sync::LazyLock::new(EventCollector::default);
 
-/// Return a handle to the global EventCollector for use in GUI widgets
+/// Return a handle to the global `EventCollector` for use in GUI widgets
 pub fn event_collector() -> EventCollector {
     EVENT_COLLECTOR.clone()
 }
 
 /// Generate a default JSON log filename with timestamp
+#[must_use] 
 pub fn default_json_log_path() -> PathBuf {
     let timestamp = Local::now().format("%Y-%m-%d_%Hh%Mm%Ss").to_string();
-    PathBuf::from(format!("cm_log_{}.jsonl", timestamp))
+    PathBuf::from(format!("cm_log_{timestamp}.jsonl"))
 }
 pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviour) -> Result<()> {
     let default_directive: Directive = level.into();
@@ -75,22 +75,20 @@ pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviou
         {
             tracing::warn!("Failed to initialize tracing subscriber: {}", error);
             // fallback: still print to stderr so CI/test runs see the message
-            eprintln!("Failed to initialize tracing subscriber: {}", error);
+            eprintln!("Failed to initialize tracing subscriber: {error}");
             return Ok(());
         }
 
         info!(?json_log_path, "JSON log output initialized");
-    } else {
-        if let Err(error) = tracing_subscriber::registry()
-            .with(env_filter)
-            .with(stderr_layer)
-            .with(EVENT_COLLECTOR.clone())
-            .try_init()
-        {
-            tracing::warn!("Failed to initialize tracing subscriber: {}", error);
-            eprintln!("Failed to initialize tracing subscriber: {}", error);
-            return Ok(());
-        }
+    } else if let Err(error) = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(stderr_layer)
+        .with(EVENT_COLLECTOR.clone())
+        .try_init()
+    {
+        tracing::warn!("Failed to initialize tracing subscriber: {}", error);
+        eprintln!("Failed to initialize tracing subscriber: {error}");
+        return Ok(());
     }
 
     Ok(())

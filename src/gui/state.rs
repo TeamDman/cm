@@ -54,6 +54,7 @@ pub enum LoadingState {
 }
 
 impl LoadingState {
+    #[must_use] 
     pub fn is_loading(&self) -> bool {
         matches!(self, LoadingState::Loading)
     }
@@ -87,9 +88,9 @@ pub struct AppState {
     pub about_open: bool,
     /// Currently selected input file (the source of truth for preview)
     pub selected_input_file: Option<PathBuf>,
-    /// Currently previewed input image path (derived from selected_input_file)
+    /// Currently previewed input image path (derived from `selected_input_file`)
     pub input_preview_path: Option<PathBuf>,
-    /// Currently previewed output image path (derived from selected_input_file)
+    /// Currently previewed output image path (derived from `selected_input_file`)
     pub output_preview_path: Option<PathBuf>,
     /// Whether we've initialized
     pub initialized: bool,
@@ -97,7 +98,7 @@ pub struct AppState {
     pub crop_to_content: bool,
     /// Threshold value for crop detection (0-255)
     pub crop_threshold: u8,
-    /// Binarization preview mode ("keep_white" or "keep_black")
+    /// Binarization preview mode ("`keep_white`" or "`keep_black`")
     pub binarization_mode: BinarizationMode,
     /// Thickness of the red bounding box in threshold preview (1-10)
     pub box_thickness: u8,
@@ -109,9 +110,9 @@ pub struct AppState {
     pub selected_output_info: Option<OutputImageInfo>,
     /// Whether output info is being calculated in the background
     pub output_info_loading: bool,
-    /// Whether process_all is running in the background
+    /// Whether `process_all` is running in the background
     pub process_all_running: bool,
-    /// Progress for process_all (current, total)
+    /// Progress for `process_all` (current, total)
     pub process_all_progress: Option<(usize, usize)>,
     /// Join handles for per-image tasks (used for cancellation)
     pub process_all_handles: Option<Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>>,
@@ -304,7 +305,7 @@ impl AppState {
                 }
                 Err(e) => {
                     let _ = sender.send(BackgroundMessage::InputPathsError {
-                        error: format!("Task panicked: {}", e),
+                        error: format!("Task panicked: {e}"),
                     });
                 }
             }
@@ -336,7 +337,7 @@ impl AppState {
                 }
                 Err(e) => {
                     let _ = sender.send(BackgroundMessage::ImageFilesError {
-                        error: format!("Task panicked: {}", e),
+                        error: format!("Task panicked: {e}"),
                     });
                 }
             }
@@ -406,11 +407,13 @@ impl AppState {
     }
 
     /// Check if an image is still loading
+    #[must_use] 
     pub fn is_image_loading(&self, path: &PathBuf) -> bool {
         self.images_loading.contains(path)
     }
 
     /// Get cached image info if available
+    #[must_use] 
     pub fn get_cached_image(&self, path: &PathBuf) -> Option<&CachedImageInfo> {
         self.image_cache.get(path)
     }
@@ -435,12 +438,12 @@ impl AppState {
                     }
                     Ok(Err(e)) => {
                         let _ = sender.send(BackgroundMessage::InputPathsError {
-                            error: format!("Failed to clear: {}", e),
+                            error: format!("Failed to clear: {e}"),
                         });
                     }
                     Err(e) => {
                         let _ = sender.send(BackgroundMessage::InputPathsError {
-                            error: format!("Task panicked: {}", e),
+                            error: format!("Task panicked: {e}"),
                         });
                     }
                 }
@@ -477,12 +480,12 @@ impl AppState {
                     }
                     Ok(Err(e)) => {
                         let _ = sender.send(BackgroundMessage::InputPathsError {
-                            error: format!("Failed to remove: {}", e),
+                            error: format!("Failed to remove: {e}"),
                         });
                     }
                     Err(e) => {
                         let _ = sender.send(BackgroundMessage::InputPathsError {
-                            error: format!("Task panicked: {}", e),
+                            error: format!("Task panicked: {e}"),
                         });
                     }
                 }
@@ -599,7 +602,7 @@ impl AppState {
                 Err(e) => {
                     let _ = sender.send(BackgroundMessage::OutputInfoError {
                         input_path,
-                        error: format!("Task panicked: {}", e),
+                        error: format!("Task panicked: {e}"),
                     });
                 }
             }
@@ -697,30 +700,27 @@ impl AppState {
                 }
 
                 // Calculate output path
-                let output_path = match image_processing::get_output_path(
+                let output_path = if let Some(p) = image_processing::get_output_path(
                     &input_path,
                     &input_root.clone().unwrap(),
                     &renamed_name,
-                ) {
-                    Some(p) => p,
-                    None => {
-                        errors.lock().unwrap().push(format!(
-                            "Could not calculate output path for {}",
-                            input_path.display()
-                        ));
-                        error_count.fetch_add(1, Ordering::SeqCst);
-                        let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _ = sender.send(BackgroundMessage::ProcessAllProgress {
-                            current,
-                            total,
-                            current_file: input_path.clone(),
-                        });
-                        return;
-                    }
+                ) { p } else {
+                    errors.lock().unwrap().push(format!(
+                        "Could not calculate output path for {}",
+                        input_path.display()
+                    ));
+                    error_count.fetch_add(1, Ordering::SeqCst);
+                    let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                    let _ = sender.send(BackgroundMessage::ProcessAllProgress {
+                        current,
+                        total,
+                        current_file: input_path.clone(),
+                    });
+                    return;
                 };
 
-                if let Some(parent) = output_path.parent() {
-                    if let Err(e) = std::fs::create_dir_all(parent) {
+                if let Some(parent) = output_path.parent()
+                    && let Err(e) = std::fs::create_dir_all(parent) {
                         errors.lock().unwrap().push(format!(
                             "Failed to create dir {}: {}",
                             parent.display(),
@@ -735,7 +735,6 @@ impl AppState {
                         });
                         return;
                     }
-                }
 
                 // Build settings with optional auto-search description
                 let mut settings = base_settings.clone();
@@ -756,23 +755,22 @@ impl AppState {
                             // Perform the search
                             let search_result = suggestion.search().await;
 
-                            if let Ok(result) = search_result {
-                                if let Some(results) = &result.results {
+                            if let Ok(result) = search_result
+                                && let Some(results) = &result.results {
                                     // Build description from search results
                                     let mut description_parts: Vec<String> = Vec::new();
                                     for item in results {
                                         let name = item.name.as_deref().unwrap_or("");
                                         let price =
-                                            item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
+                                            item.price.as_ref().map_or("", |p| p.0.as_str());
                                         if !name.is_empty() || !price.is_empty() {
-                                            description_parts.push(format!("{} ${}", name, price));
+                                            description_parts.push(format!("{name} ${price}"));
                                         }
                                     }
                                     if !description_parts.is_empty() {
                                         settings.description = Some(description_parts.join("\n"));
                                     }
                                 }
-                            }
                         }
                     }
                 }
@@ -791,7 +789,7 @@ impl AppState {
 
                 match result {
                     Ok(Ok(())) => {
-                        let dur = Instant::now() - start;
+                        let dur = start.elapsed();
                         let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
                         let remaining = total.saturating_sub(current);
                         info!(
@@ -883,7 +881,7 @@ impl AppState {
             }
         }
 
-        let processed = self.process_all_progress.map(|(c, _)| c).unwrap_or(0);
+        let processed = self.process_all_progress.map_or(0, |(c, _)| c);
         let _ = self
             .background_sender
             .send(BackgroundMessage::ProcessAllComplete {
@@ -965,23 +963,22 @@ impl AppState {
 
                     if should_search {
                         // Perform the search (mutex is inside search())
-                        if let Ok(result) = suggestion.search().await {
-                            if let Some(results) = &result.results {
+                        if let Ok(result) = suggestion.search().await
+                            && let Some(results) = &result.results {
                                 // Build description from search results
                                 let mut description_parts: Vec<String> = Vec::new();
                                 for item in results {
                                     let name = item.name.as_deref().unwrap_or("");
                                     let price =
-                                        item.price.as_ref().map(|p| p.0.as_str()).unwrap_or("");
+                                        item.price.as_ref().map_or("", |p| p.0.as_str());
                                     if !name.is_empty() || !price.is_empty() {
-                                        description_parts.push(format!("{} ${}", name, price));
+                                        description_parts.push(format!("{name} ${price}"));
                                     }
                                 }
                                 if !description_parts.is_empty() {
                                     settings.description = Some(description_parts.join("\n"));
                                 }
                             }
-                        }
                     }
                 }
             }
@@ -1031,7 +1028,7 @@ impl AppState {
                 Err(e) => {
                     let _ = sender.send(BackgroundMessage::ProcessSelectedComplete {
                         success: false,
-                        error: Some(format!("Task panicked: {}", e)),
+                        error: Some(format!("Task panicked: {e}")),
                     });
                 }
             }
@@ -1150,6 +1147,7 @@ impl AppState {
 }
 
 /// Check if a path is an image file
+#[must_use] 
 pub fn is_image_file(path: &std::path::Path) -> bool {
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         matches!(

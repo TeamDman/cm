@@ -91,7 +91,7 @@ impl RenameRuleAddArgs {
             only_when_name_too_long: self.only_when_too_long,
         };
         let id = add_rule(&APP_HOME, &rule)?;
-        println!("Added rule {}: {}", id, rule);
+        println!("Added rule {id}: {rule}");
         Ok(())
     }
 }
@@ -158,18 +158,18 @@ impl RenameRuleRemoveArgs {
                     removed += 1;
                 }
             }
-            println!("Removed {} rules", removed);
+            println!("Removed {removed} rules");
         } else if let Some(id_str) = self.id {
             match Uuid::parse_str(&id_str) {
                 Ok(id) => {
                     if remove_rule(&APP_HOME, id)? {
-                        println!("Removed rule {}", id);
+                        println!("Removed rule {id}");
                     } else {
-                        println!("No rule {}", id);
+                        println!("No rule {id}");
                     }
                 }
                 Err(_) => {
-                    println!("Invalid UUID: {}", id_str);
+                    println!("Invalid UUID: {id_str}");
                 }
             }
         } else {

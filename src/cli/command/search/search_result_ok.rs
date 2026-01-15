@@ -1,5 +1,5 @@
 //! Strongly-typed representation of the Searchspring search response.
-//! See: https://docs.searchspring.com/reference/get-search?siteId=4y9u7l
+//! See: <https://docs.searchspring.com/reference/get-search?siteId=4y9u7l>
 
 use facet::Facet;
 
@@ -47,6 +47,7 @@ pub struct Url(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
 pub struct Price(pub String);
 impl Price {
+    #[must_use] 
     pub fn as_f64(&self) -> Option<f64> {
         self.0.parse().ok()
     }
@@ -54,7 +55,7 @@ impl Price {
 
 /// A result item from the search response.
 /// Note: The API returns many more fields than we model here.
-/// Unknown fields are captured as `extra` using RawJson.
+/// Unknown fields are captured as `extra` using `RawJson`.
 #[derive(Debug, Clone, PartialEq, Facet)]
 pub struct ResultItem {
     pub uid: Option<Uid>,

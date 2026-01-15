@@ -35,7 +35,7 @@ pub fn draw_input_paths_tile(ui: &mut egui::Ui, state: &mut AppState) {
         .id_salt("inputs_paths_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for path in state.input_paths.iter() {
+            for path in &state.input_paths {
                 ui.horizontal(|ui| {
                     // Show spinner if image files are still being discovered
                     if state.image_files_loading.is_loading() {

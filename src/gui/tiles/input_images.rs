@@ -27,7 +27,7 @@ pub fn draw_input_images_tile(
     }
 
     if let LoadingState::Failed(ref error) = state.image_files_loading {
-        ui.colored_label(egui::Color32::RED, format!("Error: {}", error));
+        ui.colored_label(egui::Color32::RED, format!("Error: {error}"));
         return;
     }
 
@@ -47,14 +47,12 @@ pub fn draw_input_images_tile(
         ui.horizontal(|ui| {
             ui.spinner();
             ui.label(format!(
-                "Loading thumbnails... ({}/{} cached)",
-                cached_count, total_count
+                "Loading thumbnails... ({cached_count}/{total_count} cached)"
             ));
         });
     } else {
         ui.label(format!(
-            "Click an image to preview it ({} images):",
-            total_count
+            "Click an image to preview it ({total_count} images):"
         ));
     }
     ui.separator();

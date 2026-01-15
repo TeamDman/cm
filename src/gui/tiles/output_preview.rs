@@ -46,7 +46,7 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         if let Some((current, total)) = state.process_all_progress {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(format!("Processing {}/{}...", current, total));
+                ui.label(format!("Processing {current}/{total}..."));
             });
             let progress = current as f32 / total.max(1) as f32;
             ui.add(egui::ProgressBar::new(progress).show_percentage());
