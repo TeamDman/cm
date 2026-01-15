@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -369,7 +370,7 @@ impl AppState {
         // Spawn a single task that processes images with concurrency limit
         tokio::spawn(async move {
             // Process images with limited concurrency (4 at a time)
-            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(16));
+            let semaphore = Arc::new(tokio::sync::Semaphore::new(16));
 
             let mut handles = Vec::new();
 

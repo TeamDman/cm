@@ -5,6 +5,7 @@ use eyre::Result;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -14,7 +15,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 
 // Global collector used by the GUI logs widget. Cloneable cheap handle.
-static EVENT_COLLECTOR: std::sync::LazyLock<EventCollector> = std::sync::LazyLock::new(EventCollector::default);
+static EVENT_COLLECTOR: LazyLock<EventCollector> = LazyLock::new(EventCollector::default);
 
 /// Return a handle to the global `EventCollector` for use in GUI widgets
 pub fn event_collector() -> EventCollector {

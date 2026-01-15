@@ -9,6 +9,7 @@ use clap::Args;
 use clap::ValueEnum;
 use facet_pretty::FacetPretty;
 use std::ffi::OsString;
+use std::sync::LazyLock;
 use tokio::sync::Mutex;
 use tracing::Instrument;
 use tracing::Level;
@@ -18,7 +19,7 @@ use tracing::info;
 use tracing::span;
 
 /// Global mutex to serialize product searches (maximizes cache hits when multiple images share SKUs)
-static SEARCH_MUTEX: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
+static SEARCH_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(ValueEnum, Arbitrary, Clone, PartialEq, Debug)]
 pub enum OutputFormat {

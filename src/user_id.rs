@@ -6,6 +6,7 @@ use chrono::Utc;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,7 +63,7 @@ impl UserId {
 
 use tracing::warn;
 
-pub static USER_ID: std::sync::LazyLock<UserId> = std::sync::LazyLock::new(|| match UserId::load() {
+pub static USER_ID: LazyLock<UserId> = LazyLock::new(|| match UserId::load() {
     Ok(u) => u,
     Err(e) => {
         warn!(

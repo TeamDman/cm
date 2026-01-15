@@ -5,14 +5,14 @@ pub use rename_rule::*;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use uuid::Uuid;
 
 const DIR_NAME: &str = "rename-rules";
 const FILE_EXT: &str = "txt";
 
 // Cache for global rules when accessed via APP_HOME
-static GLOBAL_RULE_CACHE: std::sync::LazyLock<Mutex<Option<Vec<RenameRule>>>> = std::sync::LazyLock::new(|| Mutex::new(None));
+static GLOBAL_RULE_CACHE: LazyLock<Mutex<Option<Vec<RenameRule>>>> = LazyLock::new(|| Mutex::new(None));
 /// Ensure the rename rules directory exists and return its path
 fn dir_for(home: &AppHome) -> eyre::Result<PathBuf> {
     let dir = home.file_path(DIR_NAME);

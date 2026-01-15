@@ -3,6 +3,7 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use tracing::warn;
@@ -90,7 +91,7 @@ impl MaxNameLength {
 
 /// Public static that initializes using the rules described above.
 /// Backed by `AtomicUsize` so the `set_to` method can update it at runtime.
-pub static MAX_NAME_LENGTH: std::sync::LazyLock<AtomicUsize> = std::sync::LazyLock::new(|| {
+pub static MAX_NAME_LENGTH: LazyLock<AtomicUsize> = LazyLock::new(|| {
     let initial = MaxNameLength::load()
         .map(|m| m.as_usize())
         .unwrap_or(MaxNameLength::DEFAULT);

@@ -3,6 +3,7 @@ use std::env;
 use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 /// Helper that resolves the application config directory and provides helper methods
 #[derive(Clone, Debug, PartialEq)]
@@ -54,7 +55,7 @@ impl Deref for AppHome {
 use tracing::warn;
 
 /// Cached `AppHome` instance
-pub static APP_HOME: std::sync::LazyLock<AppHome> = std::sync::LazyLock::new(|| match AppHome::resolve() {
+pub static APP_HOME: LazyLock<AppHome> = LazyLock::new(|| match AppHome::resolve() {
     Ok(a) => a,
     Err(e) => {
         warn!("Warning: failed to resolve app home: {}", e);

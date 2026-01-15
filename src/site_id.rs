@@ -3,6 +3,7 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use tracing::warn;
 
 /// A strongly-typed wrapper around the site id string
@@ -70,7 +71,7 @@ impl SiteId {
 }
 
 /// Public static site id that initializes using the rules described above.
-pub static SITE_ID: std::sync::LazyLock<SiteId> = std::sync::LazyLock::new(|| {
+pub static SITE_ID: LazyLock<SiteId> = LazyLock::new(|| {
     match SiteId::load() {
         Ok(s) => s,
         Err(e) => {

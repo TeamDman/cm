@@ -9,11 +9,12 @@ use sha2::Digest;
 use sha2::Sha256;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use tracing::debug;
 use tracing::warn;
 
 /// The cache home directory for API responses.
-pub static CACHE_HOME: std::sync::LazyLock<CacheHome> = std::sync::LazyLock::new(|| match CacheHome::resolve() {
+pub static CACHE_HOME: LazyLock<CacheHome> = LazyLock::new(|| match CacheHome::resolve() {
     Ok(c) => c,
     Err(e) => {
         warn!("Failed to resolve cache home: {}", e);
