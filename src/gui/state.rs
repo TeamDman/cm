@@ -78,6 +78,8 @@ pub struct AppState {
     pub clear_all: bool,
     /// Cached rename rules
     pub rename_rules: Vec<RenameRule>,
+    /// Whether rename rules are globally enabled
+    pub rename_rules_enabled: bool,
     /// Cached renamed file paths (after applying rules)
     pub renamed_files: Vec<PathBuf>,
     /// Hash key for rename preview cache invalidation
@@ -227,6 +229,7 @@ impl Default for AppState {
             path_to_remove: None,
             clear_all: false,
             rename_rules: Vec::new(),
+            rename_rules_enabled: true,
             renamed_files: Vec::new(),
             rename_preview_key: 0,
             max_name_length: MAX_NAME_LENGTH.load(Ordering::SeqCst),
@@ -505,6 +508,7 @@ impl AppState {
         let mut hasher = DefaultHasher::new();
         self.image_files.len().hash(&mut hasher);
         self.max_name_length.hash(&mut hasher);
+        self.rename_rules_enabled.hash(&mut hasher);
         for r in &self.rename_rules {
             r.id.hash(&mut hasher);
             r.find.hash(&mut hasher);
@@ -516,8 +520,12 @@ impl AppState {
         let key = hasher.finish();
 
         if self.rename_preview_key != key {
-            self.renamed_files =
-                apply_rules_seq(&self.image_files, &self.rename_rules, self.max_name_length);
+            self.renamed_files = apply_rules_seq(
+                &self.image_files,
+                &self.rename_rules,
+                self.max_name_length,
+                self.rename_rules_enabled,
+            );
             self.rename_preview_key = key;
         }
     }
@@ -1174,7 +1182,12 @@ fn apply_rules_seq(
     files: &[PathBuf],
     rules: &[RenameRule],
     max_name_length: usize,
+    global_enabled: bool,
 ) -> Vec<PathBuf> {
+    if !global_enabled {
+        return files.iter().cloned().collect();
+    }
+
     // Precompile regexes once per rule
     let compiled: Vec<Option<regex::Regex>> = rules
         .iter()
