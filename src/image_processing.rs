@@ -75,7 +75,6 @@ fn detect_format_from_path(path: &Path) -> ImageFormat {
         .and_then(|ext| ext.to_str())
         .map_or(ImageFormat::Png, |ext| match ext.to_lowercase().as_str() {
             "jpg" | "jpeg" => ImageFormat::Jpeg,
-            "png" => ImageFormat::Png,
             "webp" => ImageFormat::WebP,
             "gif" => ImageFormat::Gif,
             "bmp" => ImageFormat::Bmp,

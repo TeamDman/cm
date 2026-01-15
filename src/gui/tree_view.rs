@@ -8,6 +8,7 @@ use eframe::egui::TextureOptions;
 use eframe::egui::{self};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
 #[cfg(windows)]
@@ -556,7 +557,7 @@ pub fn show_rename_tree_node(
             if let Some(ref path) = node.full_path {
                 let mut tooltip = format!("Output: {}", path.display());
                 if let Some(ref orig) = node.original_input_path {
-                    tooltip.push_str(&format!("\nInput: {}", orig.display()));
+                    let _ = write!(tooltip, "\nInput: {}", orig.display());
                 }
                 let response = response.on_hover_text(tooltip);
 
@@ -661,7 +662,7 @@ pub fn show_rename_group_with_output_path(
 
     let mut header_text = format!("📁 {} ({} files", display_name, files.len(),);
     if renamed_count > 0 {
-        header_text.push_str(&format!(", {renamed_count} renamed"));
+        let _ = write!(header_text, ", {renamed_count} renamed");
     }
     if too_long_count > 0 {
         header_text.push_str(&format!(

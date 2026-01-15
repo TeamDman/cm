@@ -10,7 +10,7 @@ impl GuiArgs {
     pub fn invoke(self) -> eyre::Result<()> {
         // Create a dedicated runtime and run the GUI
         let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async { crate::gui::run_gui().await })
+        rt.block_on(async { crate::gui::run_gui() })
     }
 }
 

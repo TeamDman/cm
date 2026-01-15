@@ -1,5 +1,4 @@
 use crate::app_home::AppHome;
-use dunce;
 use glob::glob;
 use std::collections::BTreeSet;
 use std::fs;
@@ -8,13 +7,13 @@ use std::path::PathBuf;
 use tracing::warn;
 
 /// Returns the path to the `inputs.txt` file in the given `AppHome`
-fn inputs_file_path(home: &AppHome) -> eyre::Result<PathBuf> {
-    Ok(home.file_path("inputs.txt"))
+fn inputs_file_path(home: &AppHome) -> PathBuf {
+    home.file_path("inputs.txt")
 }
 
 /// Load persisted inputs (one per line). Returns canonicalized `PathBufs` as stored.
 pub fn load_inputs(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
-    let path = inputs_file_path(home)?;
+    let path = inputs_file_path(home);
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -32,7 +31,7 @@ pub fn load_inputs(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
 
 /// Persist the provided set of canonical paths to the inputs file (one per line)
 fn save_inputs(home: &AppHome, paths: &BTreeSet<PathBuf>) -> eyre::Result<()> {
-    let path = inputs_file_path(home)?;
+    let path = inputs_file_path(home);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -147,7 +146,7 @@ pub fn add_paths(home: &AppHome, paths: &[PathBuf]) -> eyre::Result<Vec<PathBuf>
 /// Remove all persisted inputs (clear the inputs list)
 pub fn clear_all(home: &AppHome) -> eyre::Result<()> {
     // Remove the file if it exists; otherwise create an empty file to be explicit
-    let path = inputs_file_path(home)?;
+    let path = inputs_file_path(home);
     if path.exists() {
         fs::remove_file(&path)?;
     } else {
@@ -200,7 +199,6 @@ fn add_files_from_dir(dir: &PathBuf, out: &mut Vec<PathBuf>) -> eyre::Result<()>
             }
             Err(e) => {
                 warn!("Failed to read dir entry in {}: {}", dir.display(), e);
-                continue;
             }
         }
     }

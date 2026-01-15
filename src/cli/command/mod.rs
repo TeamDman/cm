@@ -42,7 +42,7 @@ pub enum Command {
 }
 impl Default for Command {
     fn default() -> Self {
-        Command::Gui(Default::default())
+        Command::Gui(GuiArgs::default())
     }
 }
 

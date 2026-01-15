@@ -190,22 +190,22 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
                         && state.product_search_use_suggestion
                     {
                         if let Some(s) = &suggestion.sku {
-                            state.product_search_sku = s.clone();
+                            state.product_search_sku.clone_from(s);
                         }
                         if let Some(q) = &suggestion.query {
-                            state.product_search_query = q.clone();
+                            state.product_search_query.clone_from(q);
                         }
                     }
 
                     // Keep fields synced to the latest suggestion while the option is active
                     if state.product_search_use_suggestion {
                         if let Some(s) = &suggestion.sku {
-                            state.product_search_sku = s.clone();
+                            state.product_search_sku.clone_from(s);
                         } else {
                             state.product_search_sku.clear();
                         }
                         if let Some(q) = &suggestion.query {
-                            state.product_search_query = q.clone();
+                            state.product_search_query.clone_from(q);
                         } else {
                             state.product_search_query.clear();
                         }

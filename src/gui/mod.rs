@@ -28,14 +28,15 @@ use egui_toast::Toasts;
 use eyre::eyre;
 use state::AppState;
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::PathBuf;
 use tracing::Level;
 use tracing::error;
 use tracing::info;
 
-/// Run the GUI. This is async so the caller can create a runtime; the function will
-/// block in place on the eframe app using `tokio::task::block_in_place`.
-pub async fn run_gui() -> eyre::Result<()> {
+/// Run the GUI; the function blocks in place on the eframe app using
+/// `tokio::task::block_in_place`.
+pub fn run_gui() -> eyre::Result<()> {
     info!("Starting CM GUI");
     let native_options = eframe::NativeOptions::default();
 
@@ -354,9 +355,9 @@ impl eframe::App for CmApp {
                 let mut text = "Dropping files:\n".to_owned();
                 for file in &i.raw.hovered_files {
                     if let Some(path) = &file.path {
-                        text.push_str(&format!("\n{}", path.display()));
+                        let _ = write!(text, "\n{}", path.display());
                     } else if !file.mime.is_empty() {
-                        text.push_str(&format!("\n{}", file.mime));
+                        let _ = write!(text, "\n{}", file.mime);
                     } else {
                         text.push_str("\n???");
                     }

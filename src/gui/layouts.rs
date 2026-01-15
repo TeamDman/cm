@@ -11,7 +11,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, PartialEq, Facet)]
 pub struct Node {
     /// "Pane" or "Container"
-    pub node_type: String,
+    pub node_kind: String,
     /// for Pane
     pub pane: Option<String>,
     /// for Container: "Tabs"|"Horizontal"|"Vertical"|"Grid"
@@ -35,10 +35,8 @@ impl Layout {
     }
 
     pub fn apply_to_tree(&self, tree_id: impl Into<Id>) -> Tree<CmPane> {
-        let mut tiles = egui_tiles::Tiles::default();
-
         fn build(node: &Node, tiles: &mut egui_tiles::Tiles<CmPane>) -> egui_tiles::TileId {
-            if node.node_type == "Pane" {
+            if node.node_kind == "Pane" {
                 let pane_str = node.pane.as_deref().unwrap_or("InputPaths");
                 let pane_obj = CmPane::from_key(pane_str).unwrap_or(CmPane::InputPaths);
                 tiles.insert_pane(pane_obj)
@@ -47,7 +45,6 @@ impl Layout {
                 let child_ids: Vec<egui_tiles::TileId> =
                     children.iter().map(|c| build(c, tiles)).collect();
                 match node.kind.as_deref().unwrap_or("Tabs") {
-                    "Tabs" => tiles.insert_tab_tile(child_ids),
                     "Horizontal" => tiles.insert_horizontal_tile(child_ids),
                     "Vertical" => tiles.insert_vertical_tile(child_ids),
                     "Grid" => tiles.insert_grid_tile(child_ids),
@@ -56,6 +53,7 @@ impl Layout {
             }
         }
 
+        let mut tiles = egui_tiles::Tiles::default();
         let root = build(&self.root, &mut tiles);
         Tree::new(tree_id, root, tiles)
     }
@@ -65,7 +63,7 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
     if let Some(tile) = tree.tiles.get(tile_id) {
         match tile {
             egui_tiles::Tile::Pane(pane) => Node {
-                node_type: "Pane".to_string(),
+                node_kind: "Pane".to_string(),
                 pane: Some(pane.to_key().to_string()),
                 kind: None,
                 children: None,
@@ -83,7 +81,7 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
                     .map(|c| node_from_tile(tree, *c))
                     .collect();
                 Node {
-                    node_type: "Container".to_string(),
+                    node_kind: "Container".to_string(),
                     pane: None,
                     kind: Some(kind),
                     children: Some(children),
@@ -93,7 +91,7 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
     } else {
         // Fallback to an empty tab
         Node {
-            node_type: "Container".to_string(),
+            node_kind: "Container".to_string(),
             pane: None,
             kind: Some("Tabs".to_string()),
             children: Some(vec![]),

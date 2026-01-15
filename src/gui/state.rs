@@ -847,7 +847,7 @@ impl AppState {
         let errors_supervisor = errors.clone();
         let sender_supervisor = sender.clone();
         let processed_supervisor = processed_count.clone();
-        let error_supervisor = error_count.clone();
+        let error_count_supervisor = error_count.clone();
 
         tokio::spawn(async move {
             // Pop and await each handle until none left
@@ -864,7 +864,7 @@ impl AppState {
             }
 
             let processed = processed_supervisor.load(Ordering::SeqCst);
-            let error_count = error_supervisor.load(Ordering::SeqCst);
+            let error_count = error_count_supervisor.load(Ordering::SeqCst);
             let errors = errors_supervisor.lock().unwrap().clone();
 
             let _ = sender_supervisor.send(BackgroundMessage::ProcessAllComplete {

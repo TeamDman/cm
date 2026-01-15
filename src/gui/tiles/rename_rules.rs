@@ -18,7 +18,7 @@ pub fn draw_rename_rules_tile(ui: &mut egui::Ui, state: &mut AppState) {
             let mut rules_changed = Vec::new();
 
             for rule in &mut state.rename_rules {
-                let mut rule_changed = false;
+                let mut this_rule_changed = false;
 
                 ui.group(|ui| {
                     ui.horizontal_wrapped(|ui| {
@@ -31,39 +31,39 @@ pub fn draw_rename_rules_tile(ui: &mut egui::Ui, state: &mut AppState) {
                             .add(egui::TextEdit::singleline(&mut rule.find).desired_width(150.0))
                             .changed()
                         {
-                            rule_changed = true;
+                            this_rule_changed = true;
                         }
                         ui.label("Replace:");
                         if ui
                             .add(egui::TextEdit::singleline(&mut rule.replace).desired_width(150.0))
                             .changed()
                         {
-                            rule_changed = true;
+                            this_rule_changed = true;
                         }
                     });
 
                     ui.horizontal(|ui| {
                         if ui.checkbox(&mut rule.enabled, "enabled").changed() {
-                            rule_changed = true;
+                            this_rule_changed = true;
                         }
 
                         if ui
                             .checkbox(&mut rule.case_sensitive, "case sensitive")
                             .changed()
                         {
-                            rule_changed = true;
+                            this_rule_changed = true;
                         }
 
                         if ui
                             .checkbox(&mut rule.only_when_name_too_long, "only when name too long")
                             .changed()
                         {
-                            rule_changed = true;
+                            this_rule_changed = true;
                         }
                     });
                 });
 
-                if rule_changed {
+                if this_rule_changed {
                     rules_changed.push(rule.clone());
                 }
 
