@@ -13,6 +13,9 @@ pub struct RenameRuleArgs {
 }
 
 impl RenameRuleArgs {
+    /// # Errors
+    ///
+    /// Returns an error if the rename rule subcommand fails.
     pub fn invoke(self) -> eyre::Result<()> {
         self.command.invoke()
     }

@@ -19,6 +19,9 @@ pub enum MaxNameLengthCommand {
 }
 
 impl MaxNameLengthCommand {
+    /// # Errors
+    ///
+    /// Returns an error if the max name length command fails.
     pub fn invoke(self) -> eyre::Result<()> {
         match self {
             MaxNameLengthCommand::Show(args) => args.invoke(),

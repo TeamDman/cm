@@ -47,6 +47,9 @@ impl Default for Command {
 }
 
 impl Command {
+    /// # Errors
+    ///
+    /// Returns an error if the command fails.
     pub fn invoke(self) -> eyre::Result<()> {
         match self {
             Command::Site(args) => args.invoke(),

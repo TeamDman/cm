@@ -14,6 +14,9 @@ pub struct CleanArgs {
 }
 
 impl CleanArgs {
+    /// # Errors
+    ///
+    /// Returns an error if there are issues accessing or cleaning the cache directory.
     pub fn invoke(self) -> eyre::Result<()> {
         let cache_dir = CACHE_HOME.api_responses_dir();
 

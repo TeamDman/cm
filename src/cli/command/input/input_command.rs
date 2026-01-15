@@ -19,6 +19,9 @@ pub enum InputCommand {
 }
 
 impl InputCommand {
+    /// # Errors
+    ///
+    /// Returns an error if the input command fails.
     pub fn invoke(self) -> eyre::Result<()> {
         match self {
             InputCommand::Add(a) => a.invoke(),
@@ -56,6 +59,9 @@ pub struct InputAddArgs {
 }
 
 impl InputAddArgs {
+    /// # Errors
+    ///
+    /// Returns an error if adding the input paths fails.
     pub fn invoke(self) -> eyre::Result<()> {
         let added = inputs::add_from_glob(&APP_HOME, &self.pattern)?;
         for p in &added {
@@ -78,6 +84,9 @@ impl ToArgs for InputAddArgs {
 pub struct InputListArgs {}
 
 impl InputListArgs {
+    /// # Errors
+    ///
+    /// Returns an error if loading the input paths fails.
     pub fn invoke(self) -> eyre::Result<()> {
         let list = inputs::load_inputs(&APP_HOME)?;
         for p in list {
@@ -100,6 +109,9 @@ pub struct InputRemoveArgs {
 }
 
 impl InputRemoveArgs {
+    /// # Errors
+    ///
+    /// Returns an error if removing the input paths fails.
     pub fn invoke(self) -> eyre::Result<()> {
         let removed = inputs::remove_from_glob(&APP_HOME, &self.pattern)?;
         for p in &removed {

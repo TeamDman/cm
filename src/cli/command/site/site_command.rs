@@ -19,6 +19,9 @@ pub enum SiteCommand {
 }
 
 impl SiteCommand {
+    /// # Errors
+    ///
+    /// Returns an error if the site command fails.
     pub fn invoke(self) -> eyre::Result<()> {
         match self {
             SiteCommand::Show(args) => args.invoke(),

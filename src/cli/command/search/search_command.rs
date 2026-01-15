@@ -56,6 +56,9 @@ pub struct SearchArgs {
 }
 
 impl SearchArgs {
+    /// # Errors
+    ///
+    /// Returns an error if the search fails.
     pub fn invoke(self) -> eyre::Result<()> {
         // Build a blocking runtime and perform a simple HTTP GET to the Searchspring endpoint.
         tokio::runtime::Runtime::new()?.block_on(async move {
@@ -92,6 +95,10 @@ impl SearchArgs {
     ///
     /// Note: Searches are serialized via a global mutex to maximize cache hits
     /// when multiple images share the same SKU.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the search request fails or the response cannot be parsed.
     pub async fn search(&self) -> eyre::Result<SearchResultOk> {
         // Acquire mutex to serialize searches - this maximizes cache hits
         let _guard = SEARCH_MUTEX.lock().await;
@@ -219,7 +226,6 @@ impl ToArgs for SearchArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::OsString;
 
     #[test]
     fn to_args_includes_output_when_set() {

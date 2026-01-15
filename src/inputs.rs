@@ -12,6 +12,10 @@ fn inputs_file_path(home: &AppHome) -> PathBuf {
 }
 
 /// Load persisted inputs (one per line). Returns canonicalized `PathBufs` as stored.
+///
+/// # Errors
+///
+/// Returns an error if reading the inputs file fails.
 pub fn load_inputs(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
     let path = inputs_file_path(home);
     if !path.exists() {
@@ -48,6 +52,10 @@ fn save_inputs(home: &AppHome, paths: &BTreeSet<PathBuf>) -> eyre::Result<()> {
 
 /// Add paths resolved from a glob pattern. Each matched path is canonicalized before being stored.
 /// Returns the list of newly added canonical paths.
+///
+/// # Errors
+///
+/// Returns an error if globbing, canonicalizing paths, or loading inputs fails.
 pub fn add_from_glob(home: &AppHome, pattern: &str) -> eyre::Result<Vec<PathBuf>> {
     let mut new = BTreeSet::new();
 
@@ -80,6 +88,10 @@ pub fn add_from_glob(home: &AppHome, pattern: &str) -> eyre::Result<Vec<PathBuf>
 }
 
 /// Remove paths that match the glob pattern. Returns removed canonical paths.
+///
+/// # Errors
+///
+/// Returns an error if globbing or loading inputs fails.
 pub fn remove_from_glob(home: &AppHome, pattern: &str) -> eyre::Result<Vec<PathBuf>> {
     let mut to_remove = BTreeSet::new();
 
@@ -115,6 +127,10 @@ pub fn remove_from_glob(home: &AppHome, pattern: &str) -> eyre::Result<Vec<PathB
 }
 
 /// Add a list of paths to the persisted inputs. Paths are canonicalized before storing.
+///
+/// # Errors
+///
+/// Returns an error if canonicalizing paths, loading inputs, or saving inputs fails.
 pub fn add_paths(home: &AppHome, paths: &[PathBuf]) -> eyre::Result<Vec<PathBuf>> {
     let mut new = BTreeSet::new();
 
@@ -144,6 +160,10 @@ pub fn add_paths(home: &AppHome, paths: &[PathBuf]) -> eyre::Result<Vec<PathBuf>
 }
 
 /// Remove all persisted inputs (clear the inputs list)
+///
+/// # Errors
+///
+/// Returns an error if file operations fail.
 pub fn clear_all(home: &AppHome) -> eyre::Result<()> {
     // Remove the file if it exists; otherwise create an empty file to be explicit
     let path = inputs_file_path(home);
@@ -163,6 +183,10 @@ pub fn clear_all(home: &AppHome) -> eyre::Result<()> {
 }
 
 /// Remove a single path from the persisted inputs. Returns true if the path was present and removed.
+///
+/// # Errors
+///
+/// Returns an error if loading or saving inputs fails.
 pub fn remove_path(home: &AppHome, path_to_remove: &PathBuf) -> eyre::Result<bool> {
     let mut current = load_inputs(home)?.into_iter().collect::<BTreeSet<_>>();
     let was_present = current.remove(path_to_remove);
@@ -174,6 +198,10 @@ pub fn remove_path(home: &AppHome, path_to_remove: &PathBuf) -> eyre::Result<boo
 
 /// Return all files contained in the persisted input paths.
 /// If an input path is a file it is included; if it's a directory, all descendant files are included.
+///
+/// # Errors
+///
+/// Returns an error if loading inputs or reading directories fails.
 pub fn list_files(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     for p in load_inputs(home)? {

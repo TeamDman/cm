@@ -11,6 +11,9 @@ pub struct MaxNameLengthSetArgs {
 }
 
 impl MaxNameLengthSetArgs {
+    /// # Errors
+    ///
+    /// Returns an error if setting the max name length fails.
     pub fn invoke(self) -> eyre::Result<()> {
         crate::MaxNameLength::set_to(self.length)?;
         println!("Setting max name length to: {}", self.length);

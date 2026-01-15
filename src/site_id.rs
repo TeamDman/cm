@@ -19,6 +19,10 @@ impl SiteId {
     /// 2. Otherwise, look for `${config_dir}/cm_site_id.txt`
     ///    - if file exists, use its trimmed contents
     ///    - otherwise, create the file containing the default and return default
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config file path cannot be determined or reading the file fails.
     pub fn load() -> eyre::Result<SiteId> {
         // 1. Env var
         if let Ok(envv) = env::var("CM_SITE_ID") {
@@ -47,6 +51,10 @@ impl SiteId {
     }
 
     /// Returns the path the file should live at
+    ///
+    /// # Errors
+    ///
+    /// This function does not return any errors.
     pub fn config_file_path() -> eyre::Result<PathBuf> {
         Ok(APP_HOME.file_path("cm_site_id.txt"))
     }
@@ -54,6 +62,10 @@ impl SiteId {
     /// Set the site id by writing to the config file (creates dirs if needed).
     /// Note: this does not update any existing in-memory static cache; the new value
     /// will be picked up on next run or by calling `SiteId::load()` explicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config file path cannot be determined or writing to the file fails.
     pub fn set_to(id: &str) -> eyre::Result<()> {
         let path = Self::config_file_path()?;
         if let Some(parent) = path.parent() {

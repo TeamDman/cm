@@ -16,6 +16,9 @@ pub struct SiteArgs {
 }
 
 impl SiteArgs {
+    /// # Errors
+    ///
+    /// Returns an error if the site subcommand fails.
     pub fn invoke(self) -> eyre::Result<()> {
         self.command.invoke()
     }

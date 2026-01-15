@@ -13,6 +13,9 @@ pub struct InputArgs {
 }
 
 impl InputArgs {
+    /// # Errors
+    ///
+    /// Returns an error if the input subcommand fails.
     pub fn invoke(self) -> eyre::Result<()> {
         self.command.invoke()
     }

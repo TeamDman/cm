@@ -47,6 +47,10 @@ impl RenameRule {
     }
 
     /// Parse from file text (v2 format, also accepts legacy v1 format)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the text format is invalid.
     pub fn from_file_text(text: &str) -> eyre::Result<Self> {
         let mut lines = text.lines();
         let find = lines.next().unwrap_or("").to_string();

@@ -16,10 +16,16 @@ impl UserId {
     const FILE_NAME: &'static str = "user_id.txt";
     const TTL_DAYS: i64 = 4;
 
+    /// # Errors
+    ///
+    /// This function does not return any errors.
     pub fn config_file_path() -> eyre::Result<PathBuf> {
         Ok(APP_HOME.file_path(Self::FILE_NAME))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if loading or parsing the user ID fails.
     pub fn load() -> eyre::Result<UserId> {
         let path = Self::config_file_path()?;
         if path.exists() {

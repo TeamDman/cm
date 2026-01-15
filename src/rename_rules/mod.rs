@@ -25,6 +25,10 @@ fn dir_for(home: &AppHome) -> eyre::Result<PathBuf> {
 }
 
 /// Public helper to get the path to the rename rules directory
+///
+/// # Errors
+///
+/// Returns an error if creating the rules directory fails.
 pub fn rules_dir(home: &AppHome) -> eyre::Result<PathBuf> {
     dir_for(home)
 }

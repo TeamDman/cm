@@ -7,6 +7,9 @@ use std::ffi::OsString;
 pub struct GuiArgs {}
 
 impl GuiArgs {
+    /// # Errors
+    ///
+    /// Returns an error if the GUI runtime cannot be created or the GUI fails to run.
     pub fn invoke(self) -> eyre::Result<()> {
         // Create a dedicated runtime and run the GUI
         let rt = tokio::runtime::Runtime::new()?;

@@ -16,6 +16,9 @@ pub struct MaxNameLengthArgs {
 }
 
 impl MaxNameLengthArgs {
+    /// # Errors
+    ///
+    /// Returns an error if the max name length subcommand fails.
     pub fn invoke(self) -> eyre::Result<()> {
         self.command.invoke()
     }

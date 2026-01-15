@@ -22,6 +22,10 @@ impl MaxNameLength {
     /// 2. Otherwise, look for `${config_dir}/max_name_length.txt`
     ///    - if file exists, parse its trimmed contents
     ///    - otherwise, create the file containing the default and return default
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config file path cannot be determined or reading the file fails.
     pub fn load() -> eyre::Result<MaxNameLength> {
         // 1. Env var
         if let Ok(envv) = env::var("CM_MAX_NAME_LENGTH") {
@@ -63,6 +67,10 @@ impl MaxNameLength {
     }
 
     /// Returns the path the file should live at
+    ///
+    /// # Errors
+    ///
+    /// This function does not return any errors.
     pub fn config_file_path() -> eyre::Result<PathBuf> {
         Ok(APP_HOME.file_path(Self::FILE_NAME))
     }
@@ -70,6 +78,10 @@ impl MaxNameLength {
     /// Set the value by writing to the config file (creates dirs if needed).
     /// This also updates the in-memory static so subsequent calls in the same
     /// process immediately observe the new value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config file path cannot be determined or writing to the file fails.
     pub fn set_to(value: usize) -> eyre::Result<()> {
         let path = Self::config_file_path()?;
         if let Some(parent) = path.parent() {

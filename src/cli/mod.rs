@@ -21,6 +21,9 @@ pub struct Cli {
 }
 
 impl Cli {
+    /// # Errors
+    ///
+    /// Returns an error if the CLI command fails.
     pub fn invoke(self) -> eyre::Result<()> {
         self.command.unwrap_or_default().invoke()
     }

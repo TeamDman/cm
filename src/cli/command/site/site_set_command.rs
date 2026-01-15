@@ -11,6 +11,9 @@ pub struct SiteSetArgs {
 }
 
 impl SiteSetArgs {
+    /// # Errors
+    ///
+    /// Returns an error if setting the site fails.
     pub fn invoke(self) -> eyre::Result<()> {
         // Persist the selection to disk so next runs pick it up
         crate::SiteId::set_to(&self.id)?;

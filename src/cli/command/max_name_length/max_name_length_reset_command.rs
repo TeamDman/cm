@@ -9,6 +9,9 @@ use std::ffi::OsString;
 pub struct MaxNameLengthResetArgs {}
 
 impl MaxNameLengthResetArgs {
+    /// # Errors
+    ///
+    /// Returns an error if resetting the max name length fails.
     pub fn invoke(self) -> eyre::Result<()> {
         MaxNameLength::set_to(MaxNameLength::DEFAULT)?;
         println!(

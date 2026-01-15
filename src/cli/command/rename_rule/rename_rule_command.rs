@@ -27,6 +27,9 @@ pub enum RenameRuleCommand {
 }
 
 impl RenameRuleCommand {
+    /// # Errors
+    ///
+    /// Returns an error if the rename rule command fails.
     pub fn invoke(self) -> eyre::Result<()> {
         match self {
             RenameRuleCommand::Add(a) => a.invoke(),
@@ -81,6 +84,9 @@ pub struct RenameRuleAddArgs {
 }
 
 impl RenameRuleAddArgs {
+    /// # Errors
+    ///
+    /// Returns an error if adding the rename rule fails.
     pub fn invoke(self) -> eyre::Result<()> {
         let rule = RenameRule {
             id: Uuid::new_v4(),
@@ -119,6 +125,9 @@ impl ToArgs for RenameRuleAddArgs {
 pub struct RenameRuleListArgs {}
 
 impl RenameRuleListArgs {
+    /// # Errors
+    ///
+    /// Returns an error if listing the rename rules fails.
     pub fn invoke(self) -> eyre::Result<()> {
         let listed = list_rules(&APP_HOME)?;
         info!("Found {} rename rules", listed.len());
@@ -145,6 +154,9 @@ pub struct RenameRuleRemoveArgs {
 }
 
 impl RenameRuleRemoveArgs {
+    /// # Errors
+    ///
+    /// Returns an error if removing the rename rules fails.
     pub fn invoke(self) -> eyre::Result<()> {
         let listed = list_rules(&APP_HOME)?;
         if self.all {
@@ -196,6 +208,9 @@ impl ToArgs for RenameRuleRemoveArgs {
 pub struct RenameRulePathArgs {}
 
 impl RenameRulePathArgs {
+    /// # Errors
+    ///
+    /// Returns an error if getting the rules directory fails.
     pub fn invoke(self) -> eyre::Result<()> {
         let p = crate::rename_rules::rules_dir(&APP_HOME)?;
         println!("{}", p.display());

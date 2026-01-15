@@ -16,10 +16,16 @@ impl SessionId {
     const FILE_NAME: &'static str = "session_id.txt";
     const TTL_HOURS: i64 = 1;
 
+    /// # Errors
+    ///
+    /// This function does not return any errors.
     pub fn config_file_path() -> eyre::Result<PathBuf> {
         Ok(APP_HOME.file_path(Self::FILE_NAME))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if loading or parsing the session ID fails.
     pub fn load() -> eyre::Result<SessionId> {
         let path = Self::config_file_path()?;
         if path.exists() {

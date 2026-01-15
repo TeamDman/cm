@@ -8,6 +8,9 @@ use std::sync::atomic::Ordering;
 pub struct MaxNameLengthShowArgs {}
 
 impl MaxNameLengthShowArgs {
+    /// # Errors
+    ///
+    /// This function does not return any errors.
     pub fn invoke(self) -> eyre::Result<()> {
         println!(
             "Max name length: {}",
