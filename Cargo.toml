@@ -3,7 +3,15 @@ name = "cm"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
-authors = ["Your Name <you@example.com>"]
+authors = ["TeamDman"]
+description = "A helper utility for image asset pipeline operations like renaming, resizing, cropping, and metadata discovery."
+license = "MPL-2.0"
+readme = "README.md"
+repository = "https://github.com/TeamDman/cm"
+keywords = ["cli","template", "image", "asset", "pipeline"]
+categories = ["command-line-utilities", "graphics"]
+documentation = "https://github.com/TeamDman/cm"
+
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -55,3 +63,29 @@ facet-pretty = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-
 
 [patch."https://github.com/TeamDman/egui_tracing"]
 egui_tracing = { path = "G:/Programming/Repos/egui_tracing/egui-tracing"}
+
+[build-dependencies]
+embed-resource = "3.0.6"
+
+[lints.rust]
+ambiguous_negative_literals = "warn"
+missing_debug_implementations = "warn"
+redundant_imports = "warn"
+redundant_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+unused_lifetimes = "warn"
+
+[lints.clippy]
+cargo = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+multiple_crate_versions = "allow" # turn this off periodically to see how bad it has gotten :P
+# nursery = { level = "warn", priority = -1 }  # optional, might cause more false positives
+multiple_unsafe_ops_per_block = "deny"
+module_inception = "allow"
+allow_attributes = "deny"
