@@ -80,6 +80,8 @@ pub struct AppState {
     pub rename_rules: Vec<RenameRule>,
     /// Whether rename rules are globally enabled
     pub rename_rules_enabled: bool,
+    /// Whether to hyphenate camelCase in renamed file names
+    pub rename_hyphenate: bool,
     /// Cached renamed file paths (after applying rules)
     pub renamed_files: Vec<PathBuf>,
     /// Hash key for rename preview cache invalidation
@@ -230,6 +232,7 @@ impl Default for AppState {
             clear_all: false,
             rename_rules: Vec::new(),
             rename_rules_enabled: true,
+            rename_hyphenate: false,
             renamed_files: Vec::new(),
             rename_preview_key: 0,
             max_name_length: MAX_NAME_LENGTH.load(Ordering::SeqCst),
@@ -509,6 +512,7 @@ impl AppState {
         self.image_files.len().hash(&mut hasher);
         self.max_name_length.hash(&mut hasher);
         self.rename_rules_enabled.hash(&mut hasher);
+        self.rename_hyphenate.hash(&mut hasher);
         for r in &self.rename_rules {
             r.id.hash(&mut hasher);
             r.find.hash(&mut hasher);
@@ -525,6 +529,7 @@ impl AppState {
                 &self.rename_rules,
                 self.max_name_length,
                 self.rename_rules_enabled,
+                self.rename_hyphenate,
             );
             self.rename_preview_key = key;
         }
@@ -1177,12 +1182,26 @@ pub fn is_image_file(path: &std::path::Path) -> bool {
     }
 }
 
+/// Hyphenate camelCase strings by inserting '-' before uppercase letters that follow lowercase
+fn hyphenate_name(name: &str) -> String {
+    let mut result = String::new();
+    let chars: Vec<char> = name.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if i > 0 && c.is_uppercase() && chars[i - 1].is_lowercase() {
+            result.push('-');
+        }
+        result.push(c);
+    }
+    result
+}
+
 /// Apply rename rules sequentially to file base names
 fn apply_rules_seq(
     files: &[PathBuf],
     rules: &[RenameRule],
     max_name_length: usize,
     global_enabled: bool,
+    hyphenate: bool,
 ) -> Vec<PathBuf> {
     if !global_enabled {
         return files.iter().cloned().collect();
@@ -1225,6 +1244,17 @@ fn apply_rules_seq(
                     if replaced != cur {
                         cur = replaced;
                     }
+                }
+            }
+
+            if hyphenate {
+                // Hyphenate the base name, preserving extension
+                if let Some(dot_pos) = cur.rfind('.') {
+                    let base = &cur[..dot_pos];
+                    let ext = &cur[dot_pos..];
+                    cur = format!("{}{}", hyphenate_name(base), ext);
+                } else {
+                    cur = hyphenate_name(&cur);
                 }
             }
 
