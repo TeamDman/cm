@@ -9,6 +9,7 @@ use eframe::egui::ScrollArea;
 use eframe::egui::{self};
 
 /// Draw the output preview tile UI
+#[expect(clippy::cast_precision_loss)]
 pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
     // Update the rename preview cache if needed
     state.update_rename_preview();
@@ -102,7 +103,7 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     state.selected_input_file.as_ref(),
                 );
                 if let Some(clicked) = result.clicked_path {
-                    state.select_file(clicked);
+                    state.select_file(&clicked);
                 }
             }
         });

@@ -30,6 +30,8 @@ impl CacheHome {
     /// Resolve the `CacheHome` according to:
     /// * If `CM_CACHE_DIR` env var is set, use that directory
     /// * Otherwise use the platform `ProjectDirs::cache_dir()` for teamdman/cm
+    /// # Errors
+    /// Returns an error if the cache directory cannot be determined.
     pub fn resolve() -> eyre::Result<CacheHome> {
         if let Ok(override_dir) = std::env::var("CM_CACHE_DIR") {
             return Ok(CacheHome(PathBuf::from(override_dir)));
@@ -103,6 +105,8 @@ impl CacheEntry {
     }
 
     /// Read the cached response body if it exists.
+    /// # Errors
+    /// Returns an error if reading the file fails.
     pub fn read(&self) -> eyre::Result<Option<String>> {
         if !self.exists() {
             return Ok(None);
@@ -118,6 +122,8 @@ impl CacheEntry {
     }
 
     /// Write a response to the cache.
+    /// # Errors
+    /// Returns an error if creating directories or writing files fails.
     pub fn write(&self, url: &str, body: &str) -> eyre::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
 
@@ -145,6 +151,8 @@ impl CacheEntry {
 }
 
 /// Clean the entire API response cache directory.
+/// # Errors
+/// Returns an error if accessing or removing cache files fails.
 pub fn clean_cache() -> eyre::Result<CleanResult> {
     let cache_dir = CACHE_HOME.api_responses_dir();
     let mut result = CleanResult::default();

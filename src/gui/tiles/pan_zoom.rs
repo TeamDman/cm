@@ -54,6 +54,7 @@ impl PanZoomState {
 }
 
 /// Draw a texture with pan and zoom support
+#[expect(clippy::cast_possible_truncation)]
 pub fn draw_pan_zoom_image(
     ui: &mut egui::Ui,
     texture: &TextureHandle,
@@ -145,6 +146,7 @@ pub fn draw_pan_zoom_image(
 }
 
 /// Draw an image from a URI with pan and zoom support
+#[expect(clippy::cast_possible_truncation)]
 pub fn draw_pan_zoom_image_uri(
     ui: &mut egui::Ui,
     uri: &str,

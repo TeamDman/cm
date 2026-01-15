@@ -36,6 +36,8 @@ use tracing::info;
 
 /// Run the GUI; the function blocks in place on the eframe app using
 /// `tokio::task::block_in_place`.
+/// # Errors
+/// Returns an error if the GUI fails to start or run.
 pub fn run_gui() -> eyre::Result<()> {
     info!("Starting CM GUI");
     let native_options = eframe::NativeOptions::default();
@@ -130,6 +132,7 @@ impl CmApp {
 }
 
 impl eframe::App for CmApp {
+    #[expect(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Initialize on first frame
         if !self.state.initialized {

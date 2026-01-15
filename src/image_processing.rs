@@ -84,6 +84,8 @@ fn detect_format_from_path(path: &Path) -> ImageFormat {
 }
 
 /// Downsample an image for preview while maintaining aspect ratio
+#[expect(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_sign_loss)]
 fn downsample_for_preview(img: &DynamicImage) -> DynamicImage {
     let (width, height) = (img.width(), img.height());
 
@@ -101,6 +103,8 @@ fn downsample_for_preview(img: &DynamicImage) -> DynamicImage {
 }
 
 /// Load and process an image according to settings
+/// # Errors
+/// Returns an error if the image cannot be loaded or processed.
 pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<ProcessedImage> {
     // Detect original format for output
     let output_format = detect_format_from_path(path);
@@ -236,6 +240,7 @@ fn read_exif_bytes(path: &Path) -> Option<Vec<u8>> {
 
 /// Create a minimal EXIF segment with `ImageDescription` tag
 /// The EXIF format is complex; this creates a simple TIFF-based EXIF structure
+#[expect(clippy::cast_possible_truncation)]
 fn create_exif_with_description(description: &str) -> Vec<u8> {
     // EXIF uses TIFF format. We'll create a minimal structure:
     // - TIFF header (8 bytes)
@@ -345,7 +350,7 @@ fn create_threshold_preview(
         for x in 0..width {
             let pixel = rgba.get_pixel(x, y);
             let is_background =
-                is_background_pixel_with_threshold(pixel, &background_color, threshold);
+                is_background_pixel_with_threshold(*pixel, background_color, threshold);
 
             // Set pixel color based on mode
             let output_pixel = match mode {
@@ -370,7 +375,7 @@ fn create_threshold_preview(
     }
 
     // Draw red bounding box if there's content to crop
-    let bounds = find_content_bounds(&rgba, &background_color, threshold);
+    let bounds = find_content_bounds(&rgba, background_color, threshold);
     if let Some((min_x, min_y, max_x, max_y)) = bounds {
         draw_bounding_box(
             &mut binary_img,
@@ -393,6 +398,7 @@ fn create_threshold_preview(
 }
 
 /// Sample edge pixels to determine the most common background color
+#[expect(clippy::cast_possible_truncation)]
 fn sample_edge_color(img: &RgbaImage) -> Rgba<u8> {
     let (width, height) = img.dimensions();
 
@@ -446,8 +452,8 @@ fn sample_edge_color(img: &RgbaImage) -> Rgba<u8> {
 
 /// Check if a pixel is background based on threshold
 fn is_background_pixel_with_threshold(
-    pixel: &Rgba<u8>,
-    background: &Rgba<u8>,
+    pixel: Rgba<u8>,
+    background: Rgba<u8>,
     threshold: u8,
 ) -> bool {
     // Transparent pixels are always background
@@ -472,7 +478,7 @@ fn is_background_pixel_with_threshold(
 /// This is much faster for images where content is roughly centered with padding.
 fn find_content_bounds(
     img: &RgbaImage,
-    background: &Rgba<u8>,
+    background: Rgba<u8>,
     threshold: u8,
 ) -> Option<(u32, u32, u32, u32)> {
     let (width, height) = img.dimensions();
@@ -486,7 +492,7 @@ fn find_content_bounds(
     'top: for y in 0..height {
         for x in 0..width {
             let pixel = img.get_pixel(x, y);
-            if !is_background_pixel_with_threshold(pixel, background, threshold) {
+            if !is_background_pixel_with_threshold(*pixel, background, threshold) {
                 min_y = y;
                 break 'top;
             }
@@ -504,7 +510,7 @@ fn find_content_bounds(
     'bottom: for y in (min_y..height).rev() {
         for x in 0..width {
             let pixel = img.get_pixel(x, y);
-            if !is_background_pixel_with_threshold(pixel, background, threshold) {
+            if !is_background_pixel_with_threshold(*pixel, background, threshold) {
                 max_y = y;
                 break 'bottom;
             }
@@ -516,7 +522,7 @@ fn find_content_bounds(
     'left: for x in 0..width {
         for y in min_y..=max_y {
             let pixel = img.get_pixel(x, y);
-            if !is_background_pixel_with_threshold(pixel, background, threshold) {
+            if !is_background_pixel_with_threshold(*pixel, background, threshold) {
                 min_x = x;
                 break 'left;
             }
@@ -529,7 +535,7 @@ fn find_content_bounds(
     'right: for x in (min_x..width).rev() {
         for y in min_y..=max_y {
             let pixel = img.get_pixel(x, y);
-            if !is_background_pixel_with_threshold(pixel, background, threshold) {
+            if !is_background_pixel_with_threshold(*pixel, background, threshold) {
                 max_x = x;
                 break 'right;
             }
@@ -599,7 +605,7 @@ pub fn crop_to_content_with_threshold(
 
     // Find bounds of non-background content
     if let Some((min_x, min_y, max_x, max_y)) =
-        find_content_bounds(&rgba, &background_color, threshold)
+        find_content_bounds(&rgba, background_color, threshold)
     {
         // Crop to the content bounds
         let crop_width = max_x - min_x + 1;
@@ -634,7 +640,7 @@ pub fn crop_to_content(img: &DynamicImage) -> DynamicImage {
     for y in 0..height {
         for x in 0..width {
             let pixel = rgba.get_pixel(x, y);
-            if !is_background_pixel(pixel) {
+            if !is_background_pixel(*pixel) {
                 min_x = min_x.min(x);
                 min_y = min_y.min(y);
                 max_x = max_x.max(x);
@@ -656,7 +662,7 @@ pub fn crop_to_content(img: &DynamicImage) -> DynamicImage {
 }
 
 /// Check if a pixel is considered "background" (white or transparent)
-fn is_background_pixel(pixel: &image::Rgba<u8>) -> bool {
+fn is_background_pixel(pixel: image::Rgba<u8>) -> bool {
     let [r, g, b, a] = pixel.0;
 
     // Transparent pixels are background
@@ -712,6 +718,8 @@ pub fn get_output_path(
     Some(output_path)
 }
 /// Process and write all images
+/// # Errors
+/// Returns an error if processing any image fails.
 #[expect(clippy::type_complexity)]
 pub fn process_all_images(
     input_files: &[PathBuf],
@@ -806,6 +814,10 @@ pub struct ProcessAllResult {
 }
 
 /// Load image metadata and generate a thumbnail for caching
+/// # Errors
+/// Returns an error if the image cannot be loaded or metadata cannot be retrieved.
+#[expect(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_sign_loss)]
 pub fn load_image_metadata(path: &Path, thumbnail_size: u32) -> Result<CachedImageInfo> {
     // Get file size
     let file_size = std::fs::metadata(path)

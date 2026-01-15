@@ -42,6 +42,10 @@ fn list_rule_files(home: &AppHome) -> eyre::Result<Vec<PathBuf>> {
 }
 
 /// Add a new rule file and return its assigned UUID
+/// # Errors
+/// Returns an error if the rule file cannot be written.
+/// # Panics
+/// Panics if the global rule cache mutex cannot be locked.
 pub fn add_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<Uuid> {
     let dir = dir_for(home)?;
     let filename = format!("{}.{}", rule.id, FILE_EXT);
@@ -62,6 +66,10 @@ pub fn add_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<Uuid> {
 }
 
 /// Remove a rule by UUID
+/// # Errors
+/// Returns an error if the rule file cannot be removed.
+/// # Panics
+/// Panics if the global rule cache mutex cannot be locked.
 pub fn remove_rule(home: &AppHome, id: Uuid) -> eyre::Result<bool> {
     let dir = dir_for(home)?;
     let path = dir.join(format!("{id}.{FILE_EXT}"));
@@ -78,6 +86,10 @@ pub fn remove_rule(home: &AppHome, id: Uuid) -> eyre::Result<bool> {
 }
 
 /// Write rule to file by id (create or overwrite)
+/// # Errors
+/// Returns an error if the rule file cannot be written.
+/// # Panics
+/// Panics if the global rule cache mutex cannot be locked.
 pub fn write_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<()> {
     let dir = dir_for(home)?;
     let path = dir.join(format!("{}.{}", rule.id, FILE_EXT));
@@ -98,6 +110,10 @@ pub fn write_rule(home: &AppHome, rule: &RenameRule) -> eyre::Result<()> {
 }
 
 /// List parsed rules with their indices
+/// # Errors
+/// Returns an error if the rules directory cannot be read or rules cannot be parsed.
+/// # Panics
+/// Panics if the global rule cache mutex cannot be locked.
 pub fn list_rules(home: &AppHome) -> eyre::Result<Vec<(usize, RenameRule)>> {
     // If this is the default app home, use cached list when available
     if home.is_default() {

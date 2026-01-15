@@ -88,6 +88,6 @@ pub fn draw_input_images_tile(
 
     // Handle clicked file after the borrow ends
     if let Some(clicked) = clicked_file {
-        state.select_file(clicked);
+        state.select_file(&clicked);
     }
 }

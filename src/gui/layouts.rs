@@ -11,7 +11,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, PartialEq, Facet)]
 pub struct Node {
     /// "Pane" or "Container"
-    pub node_kind: String,
+    pub variant: String,
     /// for Pane
     pub pane: Option<String>,
     /// for Container: "Tabs"|"Horizontal"|"Vertical"|"Grid"
@@ -36,7 +36,7 @@ impl Layout {
 
     pub fn apply_to_tree(&self, tree_id: impl Into<Id>) -> Tree<CmPane> {
         fn build(node: &Node, tiles: &mut egui_tiles::Tiles<CmPane>) -> egui_tiles::TileId {
-            if node.node_kind == "Pane" {
+            if node.variant == "Pane" {
                 let pane_str = node.pane.as_deref().unwrap_or("InputPaths");
                 let pane_obj = CmPane::from_key(pane_str).unwrap_or(CmPane::InputPaths);
                 tiles.insert_pane(pane_obj)
@@ -63,7 +63,7 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
     if let Some(tile) = tree.tiles.get(tile_id) {
         match tile {
             egui_tiles::Tile::Pane(pane) => Node {
-                node_kind: "Pane".to_string(),
+                variant: "Pane".to_string(),
                 pane: Some(pane.to_key().to_string()),
                 kind: None,
                 children: None,
@@ -81,7 +81,7 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
                     .map(|c| node_from_tile(tree, *c))
                     .collect();
                 Node {
-                    node_kind: "Container".to_string(),
+                    variant: "Container".to_string(),
                     pane: None,
                     kind: Some(kind),
                     children: Some(children),
@@ -91,7 +91,7 @@ fn node_from_tile(tree: &Tree<CmPane>, tile_id: egui_tiles::TileId) -> Node {
     } else {
         // Fallback to an empty tab
         Node {
-            node_kind: "Container".to_string(),
+            variant: "Container".to_string(),
             pane: None,
             kind: Some("Tabs".to_string()),
             children: Some(vec![]),

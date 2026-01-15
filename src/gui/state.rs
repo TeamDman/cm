@@ -61,6 +61,8 @@ impl LoadingState {
 }
 
 /// Shared application state
+#[expect(clippy::struct_excessive_bools)]
+#[derive(Debug)]
 pub struct AppState {
     /// Cached input paths (refreshed from disk)
     pub input_paths: Vec<PathBuf>,
@@ -162,6 +164,7 @@ pub struct OutputImageInfo {
 }
 
 /// Messages sent from background processing threads
+#[expect(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum BackgroundMessage {
     /// Input paths loaded
@@ -520,7 +523,7 @@ impl AppState {
     }
 
     /// Select an input file and update both previews
-    pub fn select_file(&mut self, input_path: PathBuf) {
+    pub fn select_file(&mut self, input_path: &PathBuf) {
         // First ensure renamed_files is up to date
         self.update_rename_preview();
 
@@ -528,7 +531,7 @@ impl AppState {
         self.input_preview_path = Some(input_path.clone());
 
         // Find the corresponding output path
-        if let Some(idx) = self.image_files.iter().position(|p| p == &input_path)
+        if let Some(idx) = self.image_files.iter().position(|p| p == input_path)
             && let Some(renamed) = self.renamed_files.get(idx)
         {
             // Find which input root this belongs to
@@ -538,7 +541,7 @@ impl AppState {
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_default();
 
-                if let Some(output_path) = get_output_path(&input_path, input_root, &renamed_name) {
+                if let Some(output_path) = get_output_path(input_path, input_root, &renamed_name) {
                     self.output_preview_path = Some(output_path);
                 }
             }
@@ -610,6 +613,9 @@ impl AppState {
     }
 
     /// Process all images according to current settings (runs in background)
+    /// # Panics
+    /// Panics if the mutex for errors cannot be locked.
+    #[expect(clippy::too_many_lines)]
     pub fn process_all(&mut self) {
         if self.process_all_running {
             warn!("Process all already running, ignoring request");
@@ -700,13 +706,11 @@ impl AppState {
                 }
 
                 // Calculate output path
-                let output_path = if let Some(p) = image_processing::get_output_path(
+                let Some(output_path) = image_processing::get_output_path(
                     &input_path,
                     &input_root.clone().unwrap(),
                     &renamed_name,
-                ) {
-                    p
-                } else {
+                ) else {
                     errors.lock().unwrap().push(format!(
                         "Could not calculate output path for {}",
                         input_path.display()
@@ -876,6 +880,8 @@ impl AppState {
     }
 
     /// Cancel any running Process All tasks
+    /// # Panics
+    /// Panics if the mutex for handles cannot be locked.
     pub fn cancel_process_all(&mut self) {
         if let Some(handles_arc) = self.process_all_handles.take() {
             let mut handles = handles_arc.lock().unwrap();
@@ -897,6 +903,7 @@ impl AppState {
         self.process_all_progress = None;
     }
 
+    #[expect(clippy::too_many_lines)]
     pub fn process_selected(&mut self) {
         if self.process_all_running {
             warn!("Processing already running, ignoring request");

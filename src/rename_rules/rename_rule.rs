@@ -107,10 +107,7 @@ impl RenameRule {
             builder.case_insensitive(true);
         }
 
-        let re = match builder.build() {
-            Ok(r) => r,
-            Err(_) => return None,
-        };
+        let Ok(re) = builder.build() else { return None };
 
         let replaced = re.replace_all(name, &self.replace).to_string();
 

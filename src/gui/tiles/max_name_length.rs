@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 use tracing::error;
 
 /// Draw the max name length tile UI
+#[expect(clippy::cast_possible_truncation)]
 pub fn draw_max_name_length_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.label("Maximum file name length:");
     ui.add_space(8.0);

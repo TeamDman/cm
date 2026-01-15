@@ -28,7 +28,12 @@ pub fn default_json_log_path() -> PathBuf {
     let timestamp = Local::now().format("%Y-%m-%d_%Hh%Mm%Ss").to_string();
     PathBuf::from(format!("cm_log_{timestamp}.jsonl"))
 }
-pub fn init_tracing(level: impl Into<Directive>, json_behaviour: JsonLogBehaviour) -> Result<()> {
+/// Initialize tracing with the given level and JSON log behaviour
+/// # Errors
+/// Returns an error if tracing cannot be initialized.
+/// # Panics
+/// Panics if the JSON log file cannot be locked or cloned.
+pub fn init_tracing(level: impl Into<Directive>, json_behaviour: &JsonLogBehaviour) -> Result<()> {
     let default_directive: Directive = level.into();
     let env_filter = EnvFilter::builder()
         .with_default_directive(default_directive.clone())

@@ -9,6 +9,11 @@ use eframe::egui::{self};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Write;
+
+#[expect(clippy::cast_precision_loss)]
+fn depth_to_space(depth: usize) -> f32 {
+    depth as f32 * 16.0
+}
 use std::path::Path;
 use std::path::PathBuf;
 #[cfg(windows)]
@@ -16,7 +21,7 @@ use teamy_windows::shell::select::open_folder_and_select_items;
 use tracing::debug;
 
 /// A simple tree node for displaying paths hierarchically
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TreeNode {
     pub children: HashMap<String, TreeNode>,
     pub is_file: bool,
@@ -25,6 +30,7 @@ pub struct TreeNode {
 }
 
 /// Context for rendering tree nodes with image cache
+#[expect(missing_debug_implementations)]
 pub struct TreeRenderContext<'a> {
     pub image_cache: &'a HashMap<PathBuf, CachedImageInfo>,
     pub images_loading: &'a HashSet<PathBuf>,
@@ -57,7 +63,7 @@ pub fn build_path_tree(paths: &[PathBuf], base_path: &Path) -> TreeNode {
 }
 
 /// Result of showing a tree - contains the clicked file path if any
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TreeResult {
     pub clicked_path: Option<PathBuf>,
 }
@@ -133,6 +139,7 @@ pub fn show_tree_node(
 }
 
 /// Show a single tree node with optional image cache, returning any clicked file path
+#[expect(clippy::too_many_lines)]
 pub fn show_tree_node_with_cache(
     ui: &mut egui::Ui,
     name: &str,
@@ -147,7 +154,7 @@ pub fn show_tree_node_with_cache(
     if node.children.is_empty() {
         // Leaf node (file) - make it clickable
         ui.horizontal(|ui| {
-            ui.add_space(depth as f32 * 16.0);
+            ui.add_space(depth_to_space(depth));
             let color = file_color.unwrap_or(Color32::LIGHT_GREEN);
 
             // Check if this node is selected
@@ -196,7 +203,7 @@ pub fn show_tree_node_with_cache(
             };
 
             if response.clicked() {
-                result.clicked_path = node.full_path.clone();
+                result.clicked_path.clone_from(&node.full_path);
             }
 
             // Tooltip with thumbnail and path
@@ -267,7 +274,7 @@ pub fn show_tree_node_with_cache(
         let header_text = format!("📁 {name}");
 
         ui.horizontal(|ui| {
-            ui.add_space(depth as f32 * 16.0);
+            ui.add_space(depth_to_space(depth));
             egui::CollapsingHeader::new(header_text)
                 .default_open(depth < 2)
                 .show(ui, |ui| {
@@ -280,6 +287,7 @@ pub fn show_tree_node_with_cache(
 }
 
 /// Format file size in human-readable form
+#[expect(clippy::cast_precision_loss)]
 fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
@@ -391,7 +399,7 @@ pub fn show_input_group_with_cache(
 }
 
 /// Info about a file and whether it was renamed / is too long
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FileRenameInfo {
     /// The original input file path (absolute)
     pub original_input_path: PathBuf,
@@ -448,7 +456,7 @@ pub fn group_files_with_renames(
 }
 
 /// A tree node for renamed files with rename status
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct RenameTreeNode {
     pub children: HashMap<String, RenameTreeNode>,
     pub is_file: bool,
@@ -520,7 +528,7 @@ pub fn show_rename_tree_node(
     if node.children.is_empty() {
         // Leaf node (file) - red if too long, orange if renamed, green otherwise
         ui.horizontal(|ui| {
-            ui.add_space(depth as f32 * 16.0);
+            ui.add_space(depth_to_space(depth));
             let color = if node.is_too_long {
                 Color32::RED
             } else if node.was_renamed {
@@ -550,7 +558,7 @@ pub fn show_rename_tree_node(
 
             if response.clicked() {
                 // Return the original input path so we can select the same file in both trees
-                result.clicked_path = node.original_input_path.clone();
+                result.clicked_path.clone_from(&node.original_input_path);
             }
 
             // Tooltip with output path info
@@ -605,7 +613,7 @@ pub fn show_rename_tree_node(
         let header_text = format!("📁 {name}");
 
         ui.horizontal(|ui| {
-            ui.add_space(depth as f32 * 16.0);
+            ui.add_space(depth_to_space(depth));
             egui::CollapsingHeader::new(header_text)
                 .default_open(depth < 2)
                 .show(ui, |ui| {
@@ -618,7 +626,6 @@ pub fn show_rename_tree_node(
 }
 
 /// Show a group of renamed files under an input directory
-#[expect(dead_code)]
 pub fn show_rename_group(
     ui: &mut egui::Ui,
     input_path: &Path,
@@ -665,9 +672,10 @@ pub fn show_rename_group_with_output_path(
         let _ = write!(header_text, ", {renamed_count} renamed");
     }
     if too_long_count > 0 {
-        header_text.push_str(&format!(
+        let _ = write!(
+            header_text,
             ", {too_long_count} too long (>{max_name_length} chars)"
-        ));
+        );
     }
     header_text.push(')');
 

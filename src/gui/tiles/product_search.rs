@@ -103,6 +103,7 @@ fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs
     });
 }
 
+#[expect(clippy::too_many_lines)]
 pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
     // Keep a cloned copy of the prettified JSON for read-only display
     let pretty_text = state.product_search_result_pretty.clone();

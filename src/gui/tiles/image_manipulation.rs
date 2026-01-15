@@ -6,6 +6,7 @@ use eframe::egui;
 use std::fs;
 
 /// Draw the image manipulation settings tile UI
+#[expect(clippy::too_many_lines)]
 pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.heading("Image Manipulation");
     ui.separator();
@@ -162,6 +163,7 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
 }
 
 /// Format file size in human-readable form
+#[expect(clippy::cast_precision_loss)]
 fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;

@@ -17,6 +17,8 @@ impl AppHome {
     }
 
     /// Create directories for the app home if needed
+    /// # Errors
+    /// Returns an error if the directory cannot be created.
     pub fn ensure_dir(&self) -> eyre::Result<()> {
         std::fs::create_dir_all(&self.0)?;
         Ok(())
@@ -25,6 +27,8 @@ impl AppHome {
     /// Resolve the `AppHome` according to the same rules used previously:
     /// * If `CM_CONFIG_DIR` env var is set, use that directory
     /// * Otherwise use the platform `ProjectDirs::config_dir()` for teamdman/cm
+    /// # Errors
+    /// Returns an error if the config directory cannot be determined.
     pub fn resolve() -> eyre::Result<AppHome> {
         if let Ok(override_dir) = env::var("CM_CONFIG_DIR") {
             return Ok(AppHome(PathBuf::from(override_dir)));
