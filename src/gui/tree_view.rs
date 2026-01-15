@@ -543,7 +543,7 @@ pub fn show_rename_tree_node(
                 .as_ref()
                 .is_some_and(|p| Some(p) == selected_path);
 
-            let label_text = format!("🖼 {name}");
+            let label_text = format!("🖼 {} ({})", name, name.len());
             let response = if is_selected {
                 ui.add(
                     egui::Label::new(egui::RichText::new(&label_text).color(color).underline())
