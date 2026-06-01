@@ -1,6 +1,8 @@
 //! Tree view helper functions for displaying file hierarchies
 
 use crate::gui::state::CachedImageInfo;
+use crate::image_processing::OutputPathOptions;
+use crate::image_processing::get_shared_input_base;
 use eframe::egui::Color32;
 use eframe::egui::Sense;
 use eframe::egui::TextureHandle;
@@ -419,16 +421,47 @@ pub fn group_files_with_renames(
     renamed_files: &[PathBuf],
     max_name_length: usize,
 ) -> Vec<(PathBuf, Vec<FileRenameInfo>)> {
+    group_files_with_renames_and_options(
+        input_paths,
+        original_files,
+        renamed_files,
+        max_name_length,
+        OutputPathOptions::default(),
+    )
+}
+
+/// Group files with their rename status by input directory and output options.
+#[must_use]
+pub fn group_files_with_renames_and_options(
+    input_paths: &[PathBuf],
+    original_files: &[PathBuf],
+    renamed_files: &[PathBuf],
+    max_name_length: usize,
+    options: OutputPathOptions,
+) -> Vec<(PathBuf, Vec<FileRenameInfo>)> {
     let mut result: Vec<(PathBuf, Vec<FileRenameInfo>)> = Vec::new();
+    let shared_input_base = options
+        .save_all_inputs_to_same_folder
+        .then(|| get_shared_input_base(input_paths))
+        .flatten();
 
     for input_path in input_paths {
         let mut files_info = Vec::new();
 
         for (original, renamed) in original_files.iter().zip(renamed_files.iter()) {
-            if let (Ok(_orig_relative), Ok(new_relative)) = (
-                original.strip_prefix(input_path),
-                renamed.strip_prefix(input_path),
-            ) {
+            if original.strip_prefix(input_path).is_ok() {
+                let relative_base = shared_input_base.as_ref().unwrap_or(input_path);
+                let Ok(original_relative) = original.strip_prefix(relative_base) else {
+                    continue;
+                };
+                let renamed_name = renamed.file_name().unwrap_or_default();
+                let new_relative = if options.flatten_output_hierarchy {
+                    PathBuf::from(renamed_name)
+                } else if let Some(parent) = original_relative.parent() {
+                    parent.join(renamed_name)
+                } else {
+                    PathBuf::from(renamed_name)
+                };
                 let orig_name = original.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let new_name = new_relative
                     .file_name()
@@ -439,7 +472,7 @@ pub fn group_files_with_renames(
 
                 files_info.push(FileRenameInfo {
                     original_input_path: original.clone(),
-                    new_path: new_relative.to_path_buf(),
+                    new_path: new_relative.clone(),
                     was_renamed,
                     is_too_long,
                 });
@@ -667,7 +700,7 @@ pub fn show_rename_group_with_output_path(
     let renamed_count = files.iter().filter(|f| f.was_renamed).count();
     let too_long_count = files.iter().filter(|f| f.is_too_long).count();
 
-    let mut header_text = format!("📁 {} ({} files", display_name, files.len(),);
+    let mut header_text = format!("📁 {} ({} files", display_name, files.len());
     if renamed_count > 0 {
         let _ = write!(header_text, ", {renamed_count} renamed");
     }

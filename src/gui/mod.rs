@@ -39,6 +39,8 @@ use tracing::info;
 /// `tokio::task::block_in_place`.
 /// # Errors
 /// Returns an error if the GUI fails to start or run.
+/// # Panics
+/// Panics if the blocking GUI task returns an error after startup.
 pub fn run_gui() -> eyre::Result<()> {
     info!("Starting CM GUI");
     // Create a dedicated runtime and run the GUI

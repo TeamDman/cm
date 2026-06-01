@@ -4,8 +4,8 @@ use crate::MAX_NAME_LENGTH;
 use crate::app_home::APP_HOME;
 use crate::cli::command::search::search_result_ok::SearchResultOk;
 use crate::image_processing::BinarizationMode;
+use crate::image_processing::OutputPathOptions;
 use crate::image_processing::ProcessingSettings;
-use crate::image_processing::get_output_path;
 use crate::image_processing::{self};
 use crate::inputs;
 use crate::rename_rules::RenameRule;
@@ -101,6 +101,8 @@ pub struct AppState {
     /// Whether we've initialized
     pub initialized: bool,
     /// Image manipulation: crop images to content
+    pub image_manipulation_enabled: bool,
+    /// Image manipulation: crop images to content
     pub crop_to_content: bool,
     /// Threshold value for crop detection (0-255)
     pub crop_threshold: u8,
@@ -112,6 +114,12 @@ pub struct AppState {
     pub sync_preview_pan_zoom: bool,
     /// JPEG output quality (1-100)
     pub jpeg_quality: u8,
+    /// Optional maximum output file size in bytes
+    pub max_file_size_bytes: Option<u64>,
+    /// Whether output files should ignore input subdirectories
+    pub flatten_output_hierarchy: bool,
+    /// Whether all input roots should write into one shared output folder
+    pub save_all_inputs_to_same_folder: bool,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Whether output info is being calculated in the background
@@ -242,12 +250,16 @@ impl Default for AppState {
             input_preview_path: None,
             output_preview_path: None,
             initialized: false,
+            image_manipulation_enabled: true,
             crop_to_content: true,
             crop_threshold: 20,
             binarization_mode: BinarizationMode::KeepWhite,
             box_thickness: 10,
             sync_preview_pan_zoom: true,
             jpeg_quality: 90,
+            max_file_size_bytes: None,
+            flatten_output_hierarchy: false,
+            save_all_inputs_to_same_folder: false,
             selected_output_info: None,
             output_info_loading: false,
             process_all_running: false,
@@ -554,7 +566,14 @@ impl AppState {
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_default();
 
-                if let Some(output_path) = get_output_path(input_path, input_root, &renamed_name) {
+                let options = self.output_path_options();
+                if let Some(output_path) = image_processing::get_output_path_with_options(
+                    input_path,
+                    input_root,
+                    &renamed_name,
+                    &self.input_paths,
+                    options,
+                ) {
                     self.output_preview_path = Some(output_path);
                 }
             }
@@ -577,11 +596,13 @@ impl AppState {
         self.selected_output_info = None;
 
         let settings = ProcessingSettings {
+            image_manipulation_enabled: self.image_manipulation_enabled,
             crop_to_content: self.crop_to_content,
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
             jpeg_quality: self.jpeg_quality,
+            max_file_size_bytes: self.max_file_size_bytes,
             description: None, // Preview doesn't need metadata
         };
         let input_path = input_path.clone();
@@ -638,17 +659,21 @@ impl AppState {
         self.update_rename_preview();
 
         let base_settings = ProcessingSettings {
+            image_manipulation_enabled: self.image_manipulation_enabled,
             crop_to_content: self.crop_to_content,
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
             jpeg_quality: self.jpeg_quality,
+            max_file_size_bytes: self.max_file_size_bytes,
             description: None, // Will be set per-image if auto-search is enabled
         };
 
         let image_files = self.image_files.clone();
         let renamed_files = self.renamed_files.clone();
         let input_paths = self.input_paths.clone();
+        let output_path_options = self.output_path_options();
+        let reserved_output_paths = Arc::new(Mutex::new(HashSet::new()));
         let sender = self.background_sender.clone();
         let auto_search_on_process = self.auto_search_on_process;
         let auto_search_only_if_sku = self.auto_search_only_if_sku;
@@ -670,6 +695,7 @@ impl AppState {
         for (idx, input_path) in image_files.into_iter().enumerate() {
             let renamed_opt = renamed_files.get(idx).cloned();
             let input_paths_clone = input_paths.clone();
+            let reserved_output_paths = reserved_output_paths.clone();
             let base_settings = base_settings.clone();
             let sender = sender.clone();
             let processed_count = processed_count.clone();
@@ -719,10 +745,12 @@ impl AppState {
                 }
 
                 // Calculate output path
-                let Some(output_path) = image_processing::get_output_path(
+                let Some(output_path) = image_processing::get_output_path_with_options(
                     &input_path,
                     &input_root.clone().unwrap(),
                     &renamed_name,
+                    &input_paths_clone,
+                    output_path_options,
                 ) else {
                     errors.lock().unwrap().push(format!(
                         "Could not calculate output path for {}",
@@ -737,6 +765,11 @@ impl AppState {
                     });
                     return;
                 };
+
+                let output_path = image_processing::reserve_available_output_path(
+                    &output_path,
+                    &reserved_output_paths,
+                );
 
                 if let Some(parent) = output_path.parent()
                     && let Err(e) = std::fs::create_dir_all(parent)
@@ -953,17 +986,21 @@ impl AppState {
         self.update_rename_preview();
 
         let base_settings = ProcessingSettings {
+            image_manipulation_enabled: self.image_manipulation_enabled,
             crop_to_content: self.crop_to_content,
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
             jpeg_quality: self.jpeg_quality,
+            max_file_size_bytes: self.max_file_size_bytes,
             description: None,
         };
 
         let sender = self.background_sender.clone();
         let auto_search_on_process = self.auto_search_on_process;
         let auto_search_only_if_sku = self.auto_search_only_if_sku;
+        let input_paths = self.input_paths.clone();
+        let output_path_options = self.output_path_options();
 
         self.process_all_running = true;
         self.process_all_progress = Some((0, 1));
@@ -1014,11 +1051,20 @@ impl AppState {
                     .unwrap_or_default();
 
                 // Calculate output path
-                let Some(output_path) =
-                    image_processing::get_output_path(&selected_input, &input_root, &renamed_name)
-                else {
+                let Some(output_path) = image_processing::get_output_path_with_options(
+                    &selected_input,
+                    &input_root,
+                    &renamed_name,
+                    &input_paths,
+                    output_path_options,
+                ) else {
                     return Err(eyre::eyre!("Could not calculate output path"));
                 };
+                let reserved_output_paths = Mutex::new(HashSet::new());
+                let output_path = image_processing::reserve_available_output_path(
+                    &output_path,
+                    &reserved_output_paths,
+                );
 
                 // Create output directory if needed
                 if let Some(parent) = output_path.parent() {
@@ -1167,6 +1213,14 @@ impl AppState {
             }
         }
     }
+
+    #[must_use]
+    pub(crate) fn output_path_options(&self) -> OutputPathOptions {
+        OutputPathOptions {
+            flatten_output_hierarchy: self.flatten_output_hierarchy,
+            save_all_inputs_to_same_folder: self.save_all_inputs_to_same_folder,
+        }
+    }
 }
 
 /// Check if a path is an image file
@@ -1204,7 +1258,7 @@ fn apply_rules_seq(
     hyphenate: bool,
 ) -> Vec<PathBuf> {
     if !global_enabled {
-        return files.iter().cloned().collect();
+        return files.to_vec();
     }
 
     // Precompile regexes once per rule

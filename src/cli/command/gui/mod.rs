@@ -11,7 +11,7 @@ impl GuiArgs {
     ///
     /// Returns an error if the GUI runtime cannot be created or the GUI fails to run.
     pub fn invoke(self) -> eyre::Result<()> {
-         crate::gui::run_gui()
+        crate::gui::run_gui()
     }
 }
 

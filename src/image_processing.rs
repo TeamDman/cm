@@ -10,9 +10,12 @@ use image::RgbaImage;
 use img_parts::ImageEXIF;
 use img_parts::jpeg::Jpeg;
 use img_parts::png::Png;
+use std::collections::HashSet;
+use std::hash::BuildHasher;
 use std::io::Cursor;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 /// Maximum preview dimension (width or height)
 const MAX_PREVIEW_SIZE: u32 = 1024;
@@ -53,8 +56,10 @@ pub enum BinarizationMode {
 }
 
 /// Image processing settings
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ProcessingSettings {
+    /// Whether image manipulation is enabled. When false, original bytes are preserved.
+    pub image_manipulation_enabled: bool,
     /// Whether to crop whitespace/transparency from images
     pub crop_to_content: bool,
     /// Threshold value for crop detection (0-255)
@@ -65,8 +70,34 @@ pub struct ProcessingSettings {
     pub box_thickness: u8,
     /// JPEG quality (1-100, default 90)
     pub jpeg_quality: u8,
+    /// Optional maximum output file size in bytes
+    pub max_file_size_bytes: Option<u64>,
     /// Optional description to write to image metadata
     pub description: Option<String>,
+}
+
+impl Default for ProcessingSettings {
+    fn default() -> Self {
+        Self {
+            image_manipulation_enabled: true,
+            crop_to_content: false,
+            crop_threshold: 20,
+            binarization_mode: BinarizationMode::default(),
+            box_thickness: 10,
+            jpeg_quality: 90,
+            max_file_size_bytes: None,
+            description: None,
+        }
+    }
+}
+
+/// Output path planning options.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OutputPathOptions {
+    /// Put all output files directly in the output root.
+    pub flatten_output_hierarchy: bool,
+    /// Use one shared output root for all input roots.
+    pub save_all_inputs_to_same_folder: bool,
 }
 
 /// Detect the image format from the file extension
@@ -116,6 +147,32 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
     let original_width = img.width();
     let original_height = img.height();
 
+    if !settings.image_manipulation_enabled {
+        let data =
+            std::fs::read(path).map_err(|e| eyre!("Failed to read {}: {}", path.display(), e))?;
+        let output_preview_img = downsample_for_preview(&img);
+        let mut output_preview_data = Vec::new();
+        let mut preview_cursor = Cursor::new(&mut output_preview_data);
+        output_preview_img
+            .write_to(&mut preview_cursor, ImageFormat::Png)
+            .map_err(|e| eyre!("Failed to encode output preview: {}", e))?;
+        let threshold_preview_data = output_preview_data.clone();
+
+        return Ok(ProcessedImage {
+            estimated_size: data.len() as u64,
+            data,
+            format: output_format,
+            original_width,
+            original_height,
+            output_width: original_width,
+            output_height: original_height,
+            was_cropped: false,
+            threshold_preview_data,
+            output_preview_data,
+            crop_bounds: None,
+        });
+    }
+
     // Generate threshold preview using downsampled image for performance
     let box_thickness = if settings.box_thickness == 0 {
         10
@@ -154,18 +211,27 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
         .write_to(&mut preview_cursor, ImageFormat::Png)
         .map_err(|e| eyre!("Failed to encode output preview: {}", e))?;
 
-    // Encode full-resolution output using the original format
-    let mut data = encode_image(&processed, output_format, settings.jpeg_quality)?;
-
-    // If we have a description, embed it as EXIF metadata
-    if let Some(ref description) = settings.description
+    let exif_data = if let Some(ref description) = settings.description
         && !description.is_empty()
     {
         // Read existing EXIF from source if available
         let existing_exif = read_exif_bytes(path);
-        let exif_data = merge_description_into_exif(existing_exif.as_deref(), description);
-        data = embed_exif(&data, output_format, &exif_data)?;
-    }
+        Some(merge_description_into_exif(
+            existing_exif.as_deref(),
+            description,
+        ))
+    } else {
+        None
+    };
+
+    // Encode full-resolution output using the original format
+    let data = encode_image_with_size_limit(
+        &processed,
+        output_format,
+        settings.jpeg_quality,
+        settings.max_file_size_bytes,
+        exif_data.as_deref(),
+    )?;
 
     let estimated_size = data.len() as u64;
 
@@ -218,6 +284,122 @@ fn encode_image(img: &DynamicImage, format: ImageFormat, jpeg_quality: u8) -> Re
     }
 
     Ok(data)
+}
+
+fn encode_image_with_exif(
+    img: &DynamicImage,
+    format: ImageFormat,
+    jpeg_quality: u8,
+    exif_data: Option<&[u8]>,
+) -> Result<Vec<u8>> {
+    let mut data = encode_image(img, format, jpeg_quality)?;
+    if let Some(exif_data) = exif_data {
+        data = embed_exif(&data, format, exif_data)?;
+    }
+    Ok(data)
+}
+
+fn encode_image_with_size_limit(
+    img: &DynamicImage,
+    format: ImageFormat,
+    jpeg_quality: u8,
+    max_file_size_bytes: Option<u64>,
+    exif_data: Option<&[u8]>,
+) -> Result<Vec<u8>> {
+    let initial_quality = if jpeg_quality == 0 { 90 } else { jpeg_quality };
+    let mut data = encode_image_with_exif(img, format, initial_quality, exif_data)?;
+    let Some(max_size) = max_file_size_bytes else {
+        return Ok(data);
+    };
+
+    if data.len() as u64 <= max_size {
+        return Ok(data);
+    }
+
+    if format == ImageFormat::Jpeg {
+        data = encode_jpeg_under_limit(img, initial_quality, max_size, exif_data)?;
+        if data.len() as u64 <= max_size {
+            return Ok(data);
+        }
+    }
+
+    resize_under_limit(img, format, initial_quality, max_size, exif_data, data)
+}
+
+fn encode_jpeg_under_limit(
+    img: &DynamicImage,
+    max_quality: u8,
+    max_size: u64,
+    exif_data: Option<&[u8]>,
+) -> Result<Vec<u8>> {
+    let mut low = 1_u8;
+    let mut high = max_quality.max(1);
+    let mut best_under: Option<Vec<u8>> = None;
+    let mut smallest = encode_image_with_exif(img, ImageFormat::Jpeg, low, exif_data)?;
+
+    while low <= high {
+        let quality = low + (high - low) / 2;
+        let candidate = encode_image_with_exif(img, ImageFormat::Jpeg, quality, exif_data)?;
+        if candidate.len() < smallest.len() {
+            smallest.clone_from(&candidate);
+        }
+
+        if candidate.len() as u64 <= max_size {
+            best_under = Some(candidate);
+            low = quality.saturating_add(1);
+        } else if quality == 1 {
+            break;
+        } else {
+            high = quality - 1;
+        }
+    }
+
+    Ok(best_under.unwrap_or(smallest))
+}
+
+#[expect(clippy::cast_possible_truncation)]
+#[expect(clippy::cast_sign_loss)]
+#[expect(clippy::cast_precision_loss)]
+fn resize_under_limit(
+    img: &DynamicImage,
+    format: ImageFormat,
+    jpeg_quality: u8,
+    max_size: u64,
+    exif_data: Option<&[u8]>,
+    mut best: Vec<u8>,
+) -> Result<Vec<u8>> {
+    let mut working = img.clone();
+
+    for _ in 0..24 {
+        if best.len() as u64 <= max_size {
+            return Ok(best);
+        }
+
+        if working.width() <= 1 && working.height() <= 1 {
+            return Ok(best);
+        }
+
+        let scale = ((max_size as f64 / best.len() as f64).sqrt() * 0.95).clamp(0.1, 0.95);
+        let new_width = ((f64::from(working.width()) * scale).round() as u32)
+            .max(1)
+            .min(working.width().saturating_sub(1).max(1));
+        let new_height = ((f64::from(working.height()) * scale).round() as u32)
+            .max(1)
+            .min(working.height().saturating_sub(1).max(1));
+
+        working = working.resize(new_width, new_height, image::imageops::FilterType::Triangle);
+        let candidate = if format == ImageFormat::Jpeg {
+            encode_jpeg_under_limit(&working, jpeg_quality, max_size, exif_data)?
+        } else {
+            encode_image_with_exif(&working, format, jpeg_quality, exif_data)?
+        };
+
+        if candidate.len() < best.len() {
+            best = candidate;
+        }
+    }
+
+    Ok(best)
 }
 
 /// Read existing EXIF data from a source file
@@ -695,6 +877,43 @@ pub fn get_output_dir(input_path: &Path) -> PathBuf {
     ))
 }
 
+/// Get the shared output directory for a set of input roots.
+#[must_use]
+pub fn get_shared_output_dir(input_roots: &[PathBuf]) -> Option<PathBuf> {
+    get_shared_input_base(input_roots).map(|base| get_output_dir(&base))
+}
+
+/// Get the shared input base for a set of input roots.
+#[must_use]
+pub fn get_shared_input_base(input_roots: &[PathBuf]) -> Option<PathBuf> {
+    let first = input_roots.first()?;
+    let mut common = if first.is_file() {
+        first.parent()?.to_path_buf()
+    } else {
+        first.clone()
+    };
+
+    for root in &input_roots[1..] {
+        let comparable = if root.is_file() {
+            root.parent()?.to_path_buf()
+        } else {
+            root.clone()
+        };
+
+        while !comparable.starts_with(&common) {
+            if !common.pop() {
+                return if first.is_file() {
+                    first.parent().map(Path::to_path_buf)
+                } else {
+                    Some(first.clone())
+                };
+            }
+        }
+    }
+
+    Some(common)
+}
+
 /// Get the output path for a file given its input path and the original input root
 #[must_use]
 pub fn get_output_path(
@@ -702,20 +921,86 @@ pub fn get_output_path(
     input_root: &Path,
     renamed_filename: &str,
 ) -> Option<PathBuf> {
-    // Get relative path from input root
-    let relative = file_path.strip_prefix(input_root).ok()?;
+    let input_roots = vec![input_root.to_path_buf()];
+    get_output_path_with_options(
+        file_path,
+        input_root,
+        renamed_filename,
+        &input_roots,
+        OutputPathOptions::default(),
+    )
+}
+
+/// Get the output path for a file with configurable hierarchy behavior.
+#[must_use]
+pub fn get_output_path_with_options(
+    file_path: &Path,
+    input_root: &Path,
+    renamed_filename: &str,
+    input_roots: &[PathBuf],
+    options: OutputPathOptions,
+) -> Option<PathBuf> {
+    // Get relative path from input root or the shared parent.
+    let relative_root = if options.save_all_inputs_to_same_folder {
+        get_shared_input_base(input_roots)?
+    } else {
+        input_root.to_path_buf()
+    };
+    let relative = file_path.strip_prefix(relative_root).ok()?;
 
     // Get output root directory
-    let output_root = get_output_dir(input_root);
+    let output_root = if options.save_all_inputs_to_same_folder {
+        get_shared_output_dir(input_roots)?
+    } else {
+        get_output_dir(input_root)
+    };
 
     // Build output path: output_root + relative_dir + renamed_filename
     let mut output_path = output_root;
-    if let Some(parent) = relative.parent() {
+    if !options.flatten_output_hierarchy
+        && let Some(parent) = relative.parent()
+    {
         output_path = output_path.join(parent);
     }
     output_path = output_path.join(renamed_filename);
 
     Some(output_path)
+}
+
+/// Reserve a conflict-free output path, appending " (1)", " (2)", etc. as needed.
+///
+/// # Panics
+/// Panics if the mutex for reserved paths cannot be locked.
+#[must_use]
+pub fn reserve_available_output_path<S: BuildHasher>(
+    desired_path: &Path,
+    reserved_paths: &Mutex<HashSet<PathBuf, S>>,
+) -> PathBuf {
+    let mut reserved = reserved_paths.lock().unwrap();
+    let mut candidate = desired_path.to_path_buf();
+    let mut suffix = 1_u32;
+
+    while candidate.exists() || reserved.contains(&candidate) {
+        candidate = numbered_path(desired_path, suffix);
+        suffix += 1;
+    }
+
+    reserved.insert(candidate.clone());
+    candidate
+}
+
+fn numbered_path(path: &Path, suffix: u32) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    let file_name = if let Some(ext) = path.extension() {
+        format!("{stem} ({suffix}).{}", ext.to_string_lossy())
+    } else {
+        format!("{stem} ({suffix})")
+    };
+    parent.join(file_name)
 }
 /// Process and write all images
 /// # Errors
@@ -854,4 +1139,149 @@ pub fn load_image_metadata(path: &Path, thumbnail_size: u32) -> Result<CachedIma
         file_size,
         thumbnail_data,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::RgbImage;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn write_jpeg(path: &Path, width: u32, height: u32, quality: u8) -> Result<Vec<u8>> {
+        let mut img = RgbImage::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let r = ((x * 7 + y * 3) % 255) as u8;
+                let g = ((x * 5 + y * 11) % 255) as u8;
+                let b = ((x * 13 + y * 17) % 255) as u8;
+                img.put_pixel(x, y, image::Rgb([r, g, b]));
+            }
+        }
+
+        let mut data = Vec::new();
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut data, quality);
+        encoder.encode(img.as_raw(), width, height, image::ExtendedColorType::Rgb8)?;
+        fs::write(path, &data)?;
+        Ok(data)
+    }
+
+    #[test]
+    fn reserve_available_output_path_continues_numbered_conflicts() -> Result<()> {
+        let dir = tempdir()?;
+        let desired = dir.path().join("photo.jpg");
+        fs::write(&desired, b"existing")?;
+        fs::write(dir.path().join("photo (1).jpg"), b"existing")?;
+        fs::write(dir.path().join("photo (2).jpg"), b"existing")?;
+
+        let reserved = Mutex::new(HashSet::new());
+        let path = reserve_available_output_path(&desired, &reserved);
+
+        assert_eq!(path, dir.path().join("photo (3).jpg"));
+        Ok(())
+    }
+
+    #[test]
+    fn shared_output_path_preserves_source_folder_when_not_flattened() -> Result<()> {
+        let dir = tempdir()?;
+        let root_a = dir.path().join("a");
+        let root_b = dir.path().join("b");
+        fs::create_dir_all(root_a.join("nested"))?;
+        fs::create_dir_all(&root_b)?;
+        let file = root_a.join("nested").join("photo.jpg");
+        fs::write(&file, b"data")?;
+        let roots = vec![root_a.clone(), root_b];
+
+        let output = get_output_path_with_options(
+            &file,
+            &root_a,
+            "renamed.jpg",
+            &roots,
+            OutputPathOptions {
+                flatten_output_hierarchy: false,
+                save_all_inputs_to_same_folder: true,
+            },
+        )
+        .expect("output path");
+
+        assert_eq!(
+            output,
+            dir.path()
+                .parent()
+                .unwrap()
+                .join(format!(
+                    "{}-output",
+                    dir.path().file_name().unwrap().to_string_lossy()
+                ))
+                .join("a")
+                .join("nested")
+                .join("renamed.jpg")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn flattened_output_path_drops_relative_folders() -> Result<()> {
+        let dir = tempdir()?;
+        let root = dir.path().join("input");
+        fs::create_dir_all(root.join("nested"))?;
+        let file = root.join("nested").join("photo.jpg");
+        fs::write(&file, b"data")?;
+
+        let output = get_output_path_with_options(
+            &file,
+            &root,
+            "renamed.jpg",
+            std::slice::from_ref(&root),
+            OutputPathOptions {
+                flatten_output_hierarchy: true,
+                save_all_inputs_to_same_folder: false,
+            },
+        )
+        .expect("output path");
+
+        assert_eq!(output, dir.path().join("input-output").join("renamed.jpg"));
+        Ok(())
+    }
+
+    #[test]
+    fn disabled_manipulation_preserves_original_bytes() -> Result<()> {
+        let dir = tempdir()?;
+        let file = dir.path().join("photo.jpg");
+        let original = write_jpeg(&file, 32, 32, 80)?;
+
+        let processed = process_image(
+            &file,
+            &ProcessingSettings {
+                image_manipulation_enabled: false,
+                max_file_size_bytes: Some(100),
+                jpeg_quality: 1,
+                ..ProcessingSettings::default()
+            },
+        )?;
+
+        assert_eq!(processed.data, original);
+        Ok(())
+    }
+
+    #[test]
+    fn max_file_size_reduces_jpeg_output() -> Result<()> {
+        let dir = tempdir()?;
+        let file = dir.path().join("photo.jpg");
+        let original = write_jpeg(&file, 512, 512, 95)?;
+        let max_size = original.len() as u64 / 3;
+
+        let processed = process_image(
+            &file,
+            &ProcessingSettings {
+                max_file_size_bytes: Some(max_size),
+                jpeg_quality: 95,
+                ..ProcessingSettings::default()
+            },
+        )?;
+
+        assert!(processed.data.len() < original.len());
+        assert!(processed.data.len() as u64 <= max_size);
+        Ok(())
+    }
 }

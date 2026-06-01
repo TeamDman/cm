@@ -104,8 +104,6 @@ impl MaxNameLength {
 /// Public static that initializes using the rules described above.
 /// Backed by `AtomicUsize` so the `set_to` method can update it at runtime.
 pub static MAX_NAME_LENGTH: LazyLock<AtomicUsize> = LazyLock::new(|| {
-    let initial = MaxNameLength::load()
-        .map(|m| m.as_usize())
-        .unwrap_or(MaxNameLength::DEFAULT);
+    let initial = MaxNameLength::load().map_or(MaxNameLength::DEFAULT, |m| m.as_usize());
     AtomicUsize::new(initial)
 });

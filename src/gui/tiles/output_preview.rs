@@ -1,9 +1,10 @@
 //! Output preview tile - shows renamed files with status colors
 
 use crate::gui::state::AppState;
-use crate::gui::tree_view::group_files_with_renames;
+use crate::gui::tree_view::group_files_with_renames_and_options;
 use crate::gui::tree_view::show_rename_group_with_output_path;
 use crate::image_processing::get_output_dir;
+use crate::image_processing::get_shared_output_dir;
 use eframe::egui::Color32;
 use eframe::egui::ScrollArea;
 use eframe::egui::{self};
@@ -80,12 +81,18 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.label("Click an image to preview:");
     ui.separator();
 
-    let grouped = group_files_with_renames(
+    let output_path_options = state.output_path_options();
+    let grouped = group_files_with_renames_and_options(
         &state.input_paths,
         &state.image_files,
         &state.renamed_files,
         state.max_name_length,
+        output_path_options,
     );
+    let shared_output_dir = output_path_options
+        .save_all_inputs_to_same_folder
+        .then(|| get_shared_output_dir(&state.input_paths))
+        .flatten();
 
     ScrollArea::both()
         .id_salt("output_preview_scroll")
@@ -93,7 +100,9 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         .show(ui, |ui| {
             for (input_path, files_info) in &grouped {
                 // Show with -output suffix
-                let output_dir = get_output_dir(input_path);
+                let output_dir = shared_output_dir
+                    .clone()
+                    .unwrap_or_else(|| get_output_dir(input_path));
                 let result = show_rename_group_with_output_path(
                     ui,
                     input_path,

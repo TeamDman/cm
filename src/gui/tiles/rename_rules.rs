@@ -7,10 +7,16 @@ use eframe::egui::{self};
 
 /// Draw the rename rules tile UI
 pub fn draw_rename_rules_tile(ui: &mut egui::Ui, state: &mut AppState) {
-    if ui.checkbox(&mut state.rename_rules_enabled, "Enable rename rules").changed() {
+    if ui
+        .checkbox(&mut state.rename_rules_enabled, "Enable rename rules")
+        .changed()
+    {
         state.rename_preview_key = 0; // Invalidate cache
     }
-    if ui.checkbox(&mut state.rename_hyphenate, "Hyphenate camelCase").changed() {
+    if ui
+        .checkbox(&mut state.rename_hyphenate, "Hyphenate camelCase")
+        .changed()
+    {
         state.rename_preview_key = 0; // Invalidate cache
     }
     ui.add_space(4.0);
