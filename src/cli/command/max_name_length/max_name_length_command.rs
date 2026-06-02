@@ -1,3 +1,4 @@
+use crate::app_home::AppHome;
 use crate::cli::command::max_name_length::max_name_length_reset_command::MaxNameLengthResetArgs;
 use crate::cli::command::max_name_length::max_name_length_set_command::MaxNameLengthSetArgs;
 use crate::cli::command::max_name_length::max_name_length_show_command::MaxNameLengthShowArgs;
@@ -22,11 +23,11 @@ impl MaxNameLengthCommand {
     /// # Errors
     ///
     /// Returns an error if the max name length command fails.
-    pub fn invoke(self) -> eyre::Result<()> {
+    pub fn invoke(self, app_home: &AppHome) -> eyre::Result<()> {
         match self {
-            MaxNameLengthCommand::Show(args) => args.invoke(),
-            MaxNameLengthCommand::Set(args) => args.invoke(),
-            MaxNameLengthCommand::Reset(args) => args.invoke(),
+            MaxNameLengthCommand::Show(args) => args.invoke(app_home),
+            MaxNameLengthCommand::Set(args) => args.invoke(app_home),
+            MaxNameLengthCommand::Reset(args) => args.invoke(app_home),
         }
     }
 }

@@ -3,6 +3,7 @@ pub mod global_args;
 pub mod json_log_behaviour;
 pub mod to_args;
 
+use crate::app_home::AppHome;
 use crate::cli::command::Command;
 use crate::cli::global_args::GlobalArgs;
 use arbitrary::Arbitrary;
@@ -24,8 +25,8 @@ impl Cli {
     /// # Errors
     ///
     /// Returns an error if the CLI command fails.
-    pub fn invoke(self) -> eyre::Result<()> {
-        self.command.unwrap_or_default().invoke()
+    pub fn invoke(self, app_home: &AppHome) -> eyre::Result<()> {
+        self.command.unwrap_or_default().invoke(app_home)
     }
 }
 

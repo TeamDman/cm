@@ -2,6 +2,7 @@
 
 use crate::MAX_NAME_LENGTH;
 use crate::MaxNameLength;
+use crate::app_home::APP_HOME;
 use crate::gui::state::AppState;
 use eframe::egui;
 use std::sync::atomic::Ordering;
@@ -21,7 +22,7 @@ pub fn draw_max_name_length_tile(ui: &mut egui::Ui, state: &mut AppState) {
         {
             state.max_name_length = value as usize;
             // Persist to disk and update global
-            if let Err(e) = MaxNameLength::set_to(value as usize) {
+            if let Err(e) = MaxNameLength::set_to(&APP_HOME, value as usize) {
                 error!("Failed to save max name length: {}", e);
             }
             state.rename_preview_key = 0; // Invalidate cache
@@ -41,7 +42,7 @@ pub fn draw_max_name_length_tile(ui: &mut egui::Ui, state: &mut AppState) {
     // Reset to default button
     if ui.button("Reset to default (50)").clicked() {
         state.max_name_length = MaxNameLength::DEFAULT;
-        if let Err(e) = MaxNameLength::set_to(MaxNameLength::DEFAULT) {
+        if let Err(e) = MaxNameLength::set_to(&APP_HOME, MaxNameLength::DEFAULT) {
             error!("Failed to reset max name length: {}", e);
         }
         state.rename_preview_key = 0;

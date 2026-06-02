@@ -1,4 +1,5 @@
 use crate::app_home::APP_HOME;
+use crate::app_home::AppHome;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -25,8 +26,8 @@ impl MaxNameLength {
     ///
     /// # Errors
     ///
-    /// Returns an error if the config file path cannot be determined or reading the file fails.
-    pub fn load() -> eyre::Result<MaxNameLength> {
+    /// Returns an error if reading or writing the config file fails.
+    pub fn load(app_home: &AppHome) -> eyre::Result<MaxNameLength> {
         // 1. Env var
         if let Ok(envv) = env::var("CM_MAX_NAME_LENGTH") {
             if let Ok(v) = envv.trim().parse::<usize>() {
@@ -39,7 +40,7 @@ impl MaxNameLength {
         }
 
         // 2. Config file under config_dir/teamdman/cm/max_name_length.txt
-        let path = Self::config_file_path()?;
+        let path = Self::config_file_path(app_home);
         if path.exists() {
             let s = fs::read_to_string(&path)?.trim().to_string();
             if let Ok(v) = s.parse::<usize>() {
@@ -71,8 +72,8 @@ impl MaxNameLength {
     /// # Errors
     ///
     /// This function does not return any errors.
-    pub fn config_file_path() -> eyre::Result<PathBuf> {
-        Ok(APP_HOME.file_path(Self::FILE_NAME))
+    pub fn config_file_path(app_home: &AppHome) -> PathBuf {
+        app_home.file_path(Self::FILE_NAME)
     }
 
     /// Set the value by writing to the config file (creates dirs if needed).
@@ -81,9 +82,9 @@ impl MaxNameLength {
     ///
     /// # Errors
     ///
-    /// Returns an error if the config file path cannot be determined or writing to the file fails.
-    pub fn set_to(value: usize) -> eyre::Result<()> {
-        let path = Self::config_file_path()?;
+    /// Returns an error if writing to the config file fails.
+    pub fn set_to(app_home: &AppHome, value: usize) -> eyre::Result<()> {
+        let path = Self::config_file_path(app_home);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -104,6 +105,6 @@ impl MaxNameLength {
 /// Public static that initializes using the rules described above.
 /// Backed by `AtomicUsize` so the `set_to` method can update it at runtime.
 pub static MAX_NAME_LENGTH: LazyLock<AtomicUsize> = LazyLock::new(|| {
-    let initial = MaxNameLength::load().map_or(MaxNameLength::DEFAULT, |m| m.as_usize());
+    let initial = MaxNameLength::load(&APP_HOME).map_or(MaxNameLength::DEFAULT, |m| m.as_usize());
     AtomicUsize::new(initial)
 });

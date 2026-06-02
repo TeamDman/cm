@@ -28,6 +28,7 @@ pub fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     let cli = Cli::command();
     let cli = Cli::from_arg_matches(&cli.get_matches())?;
+    let app_home = crate::app_home::AppHome::resolve()?;
 
     // Initialize tracing based on global args (debug and --json/--log-file)
     crate::tracing::init_tracing(
@@ -35,6 +36,6 @@ pub fn main() -> eyre::Result<()> {
         &cli.global_args.json_log_behaviour(),
     )?;
 
-    cli.invoke()?;
+    cli.invoke(&app_home)?;
     Ok(())
 }

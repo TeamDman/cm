@@ -6,6 +6,7 @@ pub mod rename_rule;
 pub mod search;
 pub mod site;
 
+use crate::app_home::AppHome;
 use crate::cli::command::clean::clean_command::CleanArgs;
 use crate::cli::command::gui::GuiArgs;
 use crate::cli::command::input::InputArgs;
@@ -50,10 +51,10 @@ impl Command {
     /// # Errors
     ///
     /// Returns an error if the command fails.
-    pub fn invoke(self) -> eyre::Result<()> {
+    pub fn invoke(self, app_home: &AppHome) -> eyre::Result<()> {
         match self {
             Command::Site(args) => args.invoke(),
-            Command::MaxNameLength(args) => args.invoke(),
+            Command::MaxNameLength(args) => args.invoke(app_home),
             Command::Search(args) => args.invoke(),
             Command::Input(args) => args.invoke(),
             Command::RenameRule(args) => args.invoke(),

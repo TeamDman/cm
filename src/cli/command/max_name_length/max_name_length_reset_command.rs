@@ -1,4 +1,5 @@
 use crate::MaxNameLength;
+use crate::app_home::AppHome;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
 use clap::Args;
@@ -12,8 +13,8 @@ impl MaxNameLengthResetArgs {
     /// # Errors
     ///
     /// Returns an error if resetting the max name length fails.
-    pub fn invoke(self) -> eyre::Result<()> {
-        MaxNameLength::set_to(MaxNameLength::DEFAULT)?;
+    pub fn invoke(self, app_home: &AppHome) -> eyre::Result<()> {
+        MaxNameLength::set_to(app_home, MaxNameLength::DEFAULT)?;
         println!(
             "Reset max name length to default: {}",
             MaxNameLength::DEFAULT

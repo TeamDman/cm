@@ -1,19 +1,16 @@
 use cm::MaxNameLength;
-use std::env;
+use cm::app_home::AppHome;
 use std::sync::atomic::Ordering;
 use tempfile::tempdir;
 
 #[test]
 fn set_updates_in_memory_static() {
     let temp = tempdir().expect("temp dir");
-    // This integration test has one test case, so set the config directory before APP_HOME is read.
-    unsafe {
-        env::set_var("CM_CONFIG_DIR", temp.path());
-    }
+    let app_home = AppHome(temp.path().to_path_buf());
 
     // Pick a non-default value to ensure change
     let val = 123_usize;
-    MaxNameLength::set_to(val).expect("set_to should succeed");
+    MaxNameLength::set_to(&app_home, val).expect("set_to should succeed");
 
     assert_eq!(cm::MAX_NAME_LENGTH.load(Ordering::SeqCst), val);
 }

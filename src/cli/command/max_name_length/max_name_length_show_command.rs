@@ -1,8 +1,9 @@
+use crate::MaxNameLength;
+use crate::app_home::AppHome;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
 use clap::Args;
 use std::ffi::OsString;
-use std::sync::atomic::Ordering;
 
 #[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
 pub struct MaxNameLengthShowArgs {}
@@ -10,11 +11,11 @@ pub struct MaxNameLengthShowArgs {}
 impl MaxNameLengthShowArgs {
     /// # Errors
     ///
-    /// This function does not return any errors.
-    pub fn invoke(self) -> eyre::Result<()> {
+    /// Returns an error if loading the max name length fails.
+    pub fn invoke(self, app_home: &AppHome) -> eyre::Result<()> {
         println!(
             "Max name length: {}",
-            crate::MAX_NAME_LENGTH.load(Ordering::SeqCst)
+            MaxNameLength::load(app_home)?.as_usize()
         );
         Ok(())
     }
