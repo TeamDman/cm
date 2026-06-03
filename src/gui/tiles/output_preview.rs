@@ -76,9 +76,11 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         ui.add_space(8.0);
         ui.colored_label(Color32::from_rgb(0xFF, 0xA5, 0x00), "●");
         ui.label("renamed");
-        ui.add_space(8.0);
-        ui.colored_label(Color32::RED, "●");
-        ui.label("too long");
+        if state.max_name_length_enforced {
+            ui.add_space(8.0);
+            ui.colored_label(Color32::RED, "●");
+            ui.label("too long");
+        }
     });
 
     ui.label("Click an image to preview:");
@@ -89,7 +91,7 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         &state.input_paths,
         &state.image_files,
         &state.renamed_files,
-        state.max_name_length,
+        state.effective_max_name_length(),
         &output_path_options,
     );
     let shared_output_dir = output_path_options.shared_output_dir.clone();
@@ -108,7 +110,7 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
                     input_path,
                     &output_dir,
                     files_info,
-                    state.max_name_length,
+                    state.effective_max_name_length(),
                     state.selected_input_file.as_ref(),
                 );
                 if let Some(clicked) = result.clicked_path {

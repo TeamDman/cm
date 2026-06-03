@@ -46,9 +46,40 @@ unsafe fn pick_folder_inner() -> Option<PathBuf> {
     unsafe { path.to_string().ok().map(PathBuf::from) }
 }
 
+/// Open a native file picker.
+#[must_use]
+#[cfg(windows)]
+pub(crate) fn pick_file() -> Option<PathBuf> {
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_ok() };
+    let result = unsafe { pick_file_inner() };
+    if initialized {
+        unsafe { CoUninitialize() };
+    }
+    result
+}
+
+#[cfg(windows)]
+unsafe fn pick_file_inner() -> Option<PathBuf> {
+    let dialog: IFileOpenDialog =
+        unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()? };
+
+    unsafe { dialog.Show(None).ok()? };
+
+    let item = unsafe { dialog.GetResult().ok()? };
+    let path = unsafe { item.GetDisplayName(SIGDN_FILESYSPATH).ok()? };
+    unsafe { path.to_string().ok().map(PathBuf::from) }
+}
+
 /// Open a native folder picker.
 #[must_use]
 #[cfg(not(windows))]
 pub(crate) fn pick_folder() -> Option<PathBuf> {
+    None
+}
+
+/// Open a native file picker.
+#[must_use]
+#[cfg(not(windows))]
+pub(crate) fn pick_file() -> Option<PathBuf> {
     None
 }

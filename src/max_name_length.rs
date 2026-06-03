@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use tracing::warn;
@@ -103,9 +104,108 @@ impl MaxNameLength {
     }
 }
 
+/// A strongly-typed wrapper around whether max name length is enforced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MaxNameLengthEnforced(pub bool);
+
+impl MaxNameLengthEnforced {
+    /// Default enforcement setting keeps v1 behavior.
+    pub const DEFAULT: bool = true;
+    const FILE_NAME: &'static str = "max_name_length_enforced.txt";
+
+    /// Load the persisted max-name enforcement setting.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading or writing the config file fails.
+    pub fn load(app_home: &AppHome) -> eyre::Result<Self> {
+        let path = Self::config_file_path(app_home);
+        if path.exists() {
+            let s = fs::read_to_string(&path)?.trim().to_ascii_lowercase();
+            if let Some(value) = parse_bool(&s) {
+                return Ok(Self(value));
+            }
+            warn!(
+                "Invalid {} contents: '{}', resetting to default",
+                path.display(),
+                s
+            );
+        }
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, Self::DEFAULT.to_string().as_bytes())?;
+        Ok(Self(Self::DEFAULT))
+    }
+
+    /// Returns the path the file should live at.
+    #[must_use]
+    pub fn config_file_path(app_home: &AppHome) -> PathBuf {
+        app_home.file_path(Self::FILE_NAME)
+    }
+
+    /// Persist a new enforcement setting and update the in-memory static.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to the config file fails.
+    pub fn set_to(app_home: &AppHome, value: bool) -> eyre::Result<()> {
+        let path = Self::config_file_path(app_home);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, value.to_string().as_bytes())?;
+        crate::MAX_NAME_LENGTH_ENFORCED.store(value, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Convenience accessor.
+    #[must_use]
+    pub fn as_bool(&self) -> bool {
+        self.0
+    }
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value {
+        "true" | "1" | "yes" | "on" | "enabled" => Some(true),
+        "false" | "0" | "no" | "off" | "disabled" => Some(false),
+        _ => None,
+    }
+}
+
 /// Public static that initializes using the rules described above.
 /// Backed by `AtomicUsize` so the `set_to` method can update it at runtime.
 pub static MAX_NAME_LENGTH: LazyLock<AtomicUsize> = LazyLock::new(|| {
     let initial = MaxNameLength::load(&APP_HOME).map_or(MaxNameLength::DEFAULT, |m| m.as_usize());
     AtomicUsize::new(initial)
 });
+
+/// Public static for whether max name length is enforced.
+pub static MAX_NAME_LENGTH_ENFORCED: LazyLock<AtomicBool> = LazyLock::new(|| {
+    let initial = MaxNameLengthEnforced::load(&APP_HOME)
+        .map_or(MaxNameLengthEnforced::DEFAULT, |m| m.as_bool());
+    AtomicBool::new(initial)
+});
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn enforcement_load_creates_default_true() -> eyre::Result<()> {
+        let dir = tempdir()?;
+        let home = AppHome(dir.path().to_path_buf());
+
+        let loaded = MaxNameLengthEnforced::load(&home)?;
+
+        assert_eq!(loaded, MaxNameLengthEnforced(true));
+        assert_eq!(
+            fs::read_to_string(MaxNameLengthEnforced::config_file_path(&home))?,
+            "true"
+        );
+        Ok(())
+    }
+}

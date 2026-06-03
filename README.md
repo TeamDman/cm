@@ -1,5 +1,13 @@
 # CM
 
+CM is a Creative Memories photo management tool with both CLI and GUI workflows.
+
+The next major direction is captured in:
+
+- [CM v2 vision](docs/cm-v2-vision.md)
+- [CM v2 decision graph](docs/cm-v2-decision-graph.md)
+- [CM v2 implementation slices](docs/cm-v2-implementation-slices.md)
+
 ## Remaining Work
 
 ### Layout

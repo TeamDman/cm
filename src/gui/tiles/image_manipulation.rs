@@ -2,6 +2,7 @@
 
 use crate::gui::state::AppState;
 use crate::image_processing::BinarizationMode;
+use crate::image_processing::DEFAULT_MAX_FILE_SIZE_BYTES;
 use eframe::egui;
 use std::fs;
 
@@ -27,68 +28,82 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
 
         ui.add_space(8.0);
 
-        // Threshold slider (always show but only affects when crop is enabled)
-        ui.horizontal(|ui| {
-            ui.label("Threshold:");
-            let threshold_changed = ui
-                .add(egui::Slider::new(&mut state.crop_threshold, 0..=255).text("tolerance"))
-                .changed();
+        ui.add_enabled_ui(state.crop_to_content, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Threshold:");
+                let threshold_changed = ui
+                    .add(egui::Slider::new(&mut state.crop_threshold, 0..=255).text("tolerance"))
+                    .changed();
 
-            if threshold_changed {
-                crop_changed = true;
-            }
-        });
+                if threshold_changed {
+                    crop_changed = true;
+                }
+            });
 
-        ui.add_space(4.0);
+            ui.add_space(4.0);
 
-        // Binarization mode dropdown (always show)
-        ui.horizontal(|ui| {
-            ui.label("Preview mode:");
-            let mode_changed = egui::ComboBox::from_id_salt("binarization_mode")
-                .selected_text(match state.binarization_mode {
-                    BinarizationMode::KeepWhite => "Keep White",
-                    BinarizationMode::KeepBlack => "Keep Black",
-                })
-                .show_ui(ui, |ui| {
-                    let mut changed = false;
-                    changed |= ui
-                        .selectable_value(
-                            &mut state.binarization_mode,
-                            BinarizationMode::KeepWhite,
-                            "Keep White",
-                        )
-                        .on_hover_text("Show content as black, background as white")
-                        .clicked();
-                    changed |= ui
-                        .selectable_value(
-                            &mut state.binarization_mode,
-                            BinarizationMode::KeepBlack,
-                            "Keep Black",
-                        )
-                        .on_hover_text("Show content as white, background as black")
-                        .clicked();
-                    changed
-                })
-                .inner
-                .unwrap_or(false);
+            ui.horizontal(|ui| {
+                ui.label("Preview mode:");
+                let mode_changed = egui::ComboBox::from_id_salt("binarization_mode")
+                    .selected_text(match state.binarization_mode {
+                        BinarizationMode::KeepWhite => "Keep White",
+                        BinarizationMode::KeepBlack => "Keep Black",
+                    })
+                    .show_ui(ui, |ui| {
+                        let mut changed = false;
+                        changed |= ui
+                            .selectable_value(
+                                &mut state.binarization_mode,
+                                BinarizationMode::KeepWhite,
+                                "Keep White",
+                            )
+                            .on_hover_text("Show content as black, background as white")
+                            .clicked();
+                        changed |= ui
+                            .selectable_value(
+                                &mut state.binarization_mode,
+                                BinarizationMode::KeepBlack,
+                                "Keep Black",
+                            )
+                            .on_hover_text("Show content as white, background as black")
+                            .clicked();
+                        changed
+                    })
+                    .inner
+                    .unwrap_or(false);
 
-            if mode_changed {
-                crop_changed = true;
-            }
-        });
+                if mode_changed {
+                    crop_changed = true;
+                }
+            });
 
-        ui.add_space(4.0);
+            ui.add_space(4.0);
 
-        // Box thickness slider
-        ui.horizontal(|ui| {
-            ui.label("Box thickness:");
-            let thickness_changed = ui
-                .add(egui::Slider::new(&mut state.box_thickness, 1..=50).text("px"))
-                .changed();
+            ui.horizontal(|ui| {
+                let box_visibility_changed = ui
+                    .checkbox(&mut state.show_crop_bounding_box, "Show crop preview box")
+                    .changed();
 
-            if thickness_changed {
-                crop_changed = true;
-            }
+                if box_visibility_changed {
+                    crop_changed = true;
+                }
+            });
+
+            ui.add_space(4.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Box thickness:");
+                let thickness_changed = ui
+                    .add_enabled(
+                        state.show_crop_bounding_box,
+                        egui::Slider::new(&mut state.box_thickness, 1..=50).text("px"),
+                    )
+                    .changed();
+
+                if thickness_changed {
+                    crop_changed = true;
+                }
+            });
         });
 
         ui.add_space(8.0);
@@ -112,17 +127,17 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
         ui.horizontal(|ui| {
             let mut max_size_enabled = state.max_file_size_bytes.is_some();
             let enabled_changed = ui
-                .checkbox(&mut max_size_enabled, "Max photo size")
+                .checkbox(&mut max_size_enabled, "Reduce file size")
                 .on_hover_text("Shrink output images when needed to fit this size")
                 .changed();
 
             if enabled_changed {
-                state.max_file_size_bytes = max_size_enabled.then_some(500 * 1024);
+                state.max_file_size_bytes = max_size_enabled.then_some(DEFAULT_MAX_FILE_SIZE_BYTES);
             }
 
             let mut max_size_kb = state
                 .max_file_size_bytes
-                .unwrap_or(500 * 1024)
+                .unwrap_or(DEFAULT_MAX_FILE_SIZE_BYTES)
                 .div_ceil(1024);
             let size_changed = ui
                 .add_enabled(

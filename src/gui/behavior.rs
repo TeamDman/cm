@@ -32,6 +32,10 @@ pub enum CmPane {
     ImageDescription,
     /// Product Search (Searchspring)
     ProductSearch,
+    /// V2 plan builder summary
+    Plan,
+    /// V2 mom-friendly guided workflow
+    StudioGuide,
 }
 
 impl CmPane {
@@ -49,6 +53,8 @@ impl CmPane {
             CmPane::OutputImagePreview => "Output Preview Image",
             CmPane::ImageDescription => "Image Description",
             CmPane::ProductSearch => "Product Search",
+            CmPane::Plan => "Plan",
+            CmPane::StudioGuide => "Studio Guide",
         }
     }
 
@@ -66,6 +72,8 @@ impl CmPane {
             CmPane::OutputImagePreview => "OutputImagePreview",
             CmPane::ImageDescription => "ImageDescription",
             CmPane::ProductSearch => "ProductSearch",
+            CmPane::Plan => "Plan",
+            CmPane::StudioGuide => "StudioGuide",
         }
     }
 
@@ -83,6 +91,8 @@ impl CmPane {
             "OutputImagePreview" => CmPane::OutputImagePreview,
             "ImageDescription" => CmPane::ImageDescription,
             "ProductSearch" => CmPane::ProductSearch,
+            "Plan" => CmPane::Plan,
+            "StudioGuide" => CmPane::StudioGuide,
             _ => return None,
         })
     }
@@ -140,6 +150,8 @@ impl egui_tiles::Behavior<CmPane> for CmBehavior<'_> {
             ),
             CmPane::ImageDescription => tiles::draw_image_description_tile(ui, self.state),
             CmPane::ProductSearch => tiles::draw_product_search_tile(ui, self.state),
+            CmPane::Plan => tiles::draw_plan_tile(ui, self.state),
+            CmPane::StudioGuide => tiles::draw_studio_guide_tile(ui, self.state),
         }
 
         // For now, no drag response
@@ -164,6 +176,23 @@ impl egui_tiles::Behavior<CmPane> for CmBehavior<'_> {
 
 /// Create the default tile tree layout
 pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
+    create_tree(false)
+}
+
+/// Create the v2 tile tree layout with a plan pane.
+#[cfg(test)]
+pub fn create_v2_tree() -> egui_tiles::Tree<CmPane> {
+    create_tree(true)
+}
+
+/// Create a standalone product-search layout outside the studios.
+pub fn create_product_search_tree() -> egui_tiles::Tree<CmPane> {
+    let mut tiles = egui_tiles::Tiles::default();
+    let root = tiles.insert_pane(CmPane::ProductSearch);
+    egui_tiles::Tree::new("cm_product_search_tree", root, tiles)
+}
+
+fn create_tree(include_plan: bool) -> egui_tiles::Tree<CmPane> {
     let mut tiles = egui_tiles::Tiles::default();
 
     // Create panes
@@ -177,10 +206,16 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     let threshold_preview_id = tiles.insert_pane(CmPane::ThresholdPreview);
     let output_image_preview_id = tiles.insert_pane(CmPane::OutputImagePreview);
     let image_description_id = tiles.insert_pane(CmPane::ImageDescription);
-    let product_search_id = tiles.insert_pane(CmPane::ProductSearch);
+    let plan_id = include_plan.then(|| tiles.insert_pane(CmPane::Plan));
+    let studio_guide_id = include_plan.then(|| tiles.insert_pane(CmPane::StudioGuide));
 
     // Left column: Input Paths + Input Images (vertical)
-    let left_column = tiles.insert_vertical_tile(vec![input_paths_id, input_images_id]);
+    let mut left_panes = Vec::new();
+    if let Some(studio_guide_id) = studio_guide_id {
+        left_panes.push(studio_guide_id);
+    }
+    left_panes.extend([input_paths_id, input_images_id]);
+    let left_column = tiles.insert_vertical_tile(left_panes);
 
     // Middle-left column: Image previews stacked vertically (input, threshold, output)
     let previews_column = tiles.insert_vertical_tile(vec![
@@ -189,14 +224,17 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
         output_image_preview_id,
     ]);
 
-    // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length + Image Description + Product Search)
-    let settings_column = tiles.insert_vertical_tile(vec![
+    // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length + Image Description)
+    let mut settings_panes = vec![
         image_manipulation_id,
         rename_rules_id,
         max_name_length_id,
         image_description_id,
-        product_search_id,
-    ]);
+    ];
+    if let Some(plan_id) = plan_id {
+        settings_panes.push(plan_id);
+    }
+    let settings_column = tiles.insert_vertical_tile(settings_panes);
 
     // Right column: Output Preview
     let right_column = output_preview_id;
@@ -210,4 +248,74 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     ]);
 
     egui_tiles::Tree::new("cm_tree", root, tiles)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    const CORE_STUDIO_PANES: [&str; 10] = [
+        "InputPaths",
+        "InputImages",
+        "ImageManipulation",
+        "RenameRules",
+        "MaxNameLength",
+        "OutputPreview",
+        "InputImagePreview",
+        "ThresholdPreview",
+        "OutputImagePreview",
+        "ImageDescription",
+    ];
+
+    #[test]
+    fn v1_studio_contains_core_panes_without_product_search() {
+        let panes = pane_keys(&create_default_tree());
+
+        assert_eq!(panes, BTreeSet::from(CORE_STUDIO_PANES));
+    }
+
+    #[test]
+    fn v2_studio_extends_v1_with_guide_and_plan_only() {
+        let mut expected = BTreeSet::from(CORE_STUDIO_PANES);
+        expected.insert("Plan");
+        expected.insert("StudioGuide");
+
+        let panes = pane_keys(&create_v2_tree());
+
+        assert_eq!(panes, expected);
+    }
+
+    #[test]
+    fn product_search_is_a_standalone_mode() {
+        let panes = pane_keys(&create_product_search_tree());
+
+        assert_eq!(panes, BTreeSet::from(["ProductSearch"]));
+    }
+
+    fn pane_keys(tree: &egui_tiles::Tree<CmPane>) -> BTreeSet<&'static str> {
+        let mut out = BTreeSet::new();
+        if let Some(root) = tree.root() {
+            collect_panes(tree, root, &mut out);
+        }
+        out
+    }
+
+    fn collect_panes(
+        tree: &egui_tiles::Tree<CmPane>,
+        tile_id: egui_tiles::TileId,
+        out: &mut BTreeSet<&'static str>,
+    ) {
+        match tree.tiles.get(tile_id) {
+            Some(egui_tiles::Tile::Pane(pane)) => {
+                out.insert(pane.to_key());
+            }
+            Some(egui_tiles::Tile::Container(container)) => {
+                for child in container.children() {
+                    collect_panes(tree, *child, out);
+                }
+            }
+            None => {}
+        }
+    }
 }

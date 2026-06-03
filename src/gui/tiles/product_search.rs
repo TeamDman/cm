@@ -103,6 +103,28 @@ fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs
     });
 }
 
+pub fn submit_product_search(state: &mut AppState) {
+    state.product_search_result_raw = None;
+    state.product_search_result_pretty.clear();
+    state.product_search_last_response = None;
+    state.product_search_show_raw = false;
+
+    let query = state.product_search_query.clone();
+    let sku = if state.product_search_sku.is_empty() {
+        None
+    } else {
+        Some(state.product_search_sku.clone())
+    };
+    let tx = state.background_sender.clone();
+    let args = SearchArgs {
+        query: if query.is_empty() { None } else { Some(query) },
+        sku,
+        no_cache: false,
+        output: OutputFormat::Json,
+    };
+    spawn_product_search(tx, args);
+}
+
 #[expect(clippy::too_many_lines)]
 pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
     // Keep a cloned copy of the prettified JSON for read-only display
@@ -118,26 +140,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
         }
         // Submit on Enter
         if query_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            // Clear previous results so UI doesn't appear stale while waiting
-            state.product_search_result_raw = None;
-            state.product_search_result_pretty.clear();
-            state.product_search_last_response = None;
-            state.product_search_show_raw = false;
-
-            let query = state.product_search_query.clone();
-            let sku = if state.product_search_sku.is_empty() {
-                None
-            } else {
-                Some(state.product_search_sku.clone())
-            };
-            let tx = state.background_sender.clone();
-            let args = SearchArgs {
-                query: if query.is_empty() { None } else { Some(query) },
-                sku,
-                no_cache: false,
-                output: OutputFormat::Json,
-            };
-            spawn_product_search(tx, args);
+            submit_product_search(state);
         }
 
         ui.label("SKU:");
@@ -147,26 +150,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
             state.product_search_use_suggestion = false;
         }
         if sku_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            // Clear previous results so UI doesn't appear stale while waiting
-            state.product_search_result_raw = None;
-            state.product_search_result_pretty.clear();
-            state.product_search_last_response = None;
-            state.product_search_show_raw = false;
-
-            let query = state.product_search_query.clone();
-            let sku = if state.product_search_sku.is_empty() {
-                None
-            } else {
-                Some(state.product_search_sku.clone())
-            };
-            let tx = state.background_sender.clone();
-            let args = SearchArgs {
-                query: if query.is_empty() { None } else { Some(query) },
-                sku,
-                no_cache: false,
-                output: OutputFormat::Json,
-            };
-            spawn_product_search(tx, args);
+            submit_product_search(state);
         }
 
         // Show suggested query for the selected item, if any
@@ -222,28 +206,7 @@ pub fn draw_product_search_tile(ui: &mut egui::Ui, state: &mut AppState) {
         }
 
         if ui.add(Button::new("Submit")).clicked() {
-            // Clear previous results so UI doesn't appear stale while waiting
-            state.product_search_result_raw = None;
-            state.product_search_result_pretty.clear();
-            state.product_search_last_response = None;
-            state.product_search_show_raw = false;
-
-            // Perform search in background: spawn tokio task
-            let query = state.product_search_query.clone();
-            let sku = if state.product_search_sku.is_empty() {
-                None
-            } else {
-                Some(state.product_search_sku.clone())
-            };
-            let tx = state.background_sender.clone();
-
-            let args = SearchArgs {
-                query: if query.is_empty() { None } else { Some(query) },
-                sku,
-                no_cache: false,
-                output: OutputFormat::Json,
-            };
-            spawn_product_search(tx, args);
+            submit_product_search(state);
         }
 
         ui.add_space(6.0);

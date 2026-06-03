@@ -1,6 +1,7 @@
 //! Shared application state for the CM GUI
 
 use crate::MAX_NAME_LENGTH;
+use crate::MAX_NAME_LENGTH_ENFORCED;
 use crate::app_home::APP_HOME;
 use crate::cli::command::search::search_result_ok::SearchResultOk;
 use crate::image_processing::BinarizationMode;
@@ -60,6 +61,60 @@ impl LoadingState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StudioStep {
+    #[default]
+    PickPhotos,
+    ReviewImages,
+    OutputShape,
+    Processing,
+    Naming,
+    Run,
+}
+
+impl StudioStep {
+    pub const ALL: [Self; 6] = [
+        Self::PickPhotos,
+        Self::ReviewImages,
+        Self::OutputShape,
+        Self::Processing,
+        Self::Naming,
+        Self::Run,
+    ];
+
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::PickPhotos => "Pick photos",
+            Self::ReviewImages => "Review images",
+            Self::OutputShape => "Output shape",
+            Self::Processing => "Processing",
+            Self::Naming => "Names",
+            Self::Run => "Run",
+        }
+    }
+
+    #[must_use]
+    pub fn number(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|step| *step == self)
+            .map_or(1, |idx| idx + 1)
+    }
+
+    #[must_use]
+    pub fn previous(self) -> Option<Self> {
+        let idx = Self::ALL.iter().position(|step| *step == self)?;
+        idx.checked_sub(1).map(|idx| Self::ALL[idx])
+    }
+
+    #[must_use]
+    pub fn next(self) -> Option<Self> {
+        let idx = Self::ALL.iter().position(|step| *step == self)?;
+        Self::ALL.get(idx + 1).copied()
+    }
+}
+
 /// Shared application state
 #[expect(clippy::struct_excessive_bools)]
 #[derive(Debug)]
@@ -88,6 +143,8 @@ pub struct AppState {
     pub rename_preview_key: u64,
     /// Current max name length value
     pub max_name_length: usize,
+    /// Whether max name length affects rename rules and output warnings
+    pub max_name_length_enforced: bool,
     /// Whether the logs window/tile is visible
     pub logs_visible: bool,
     /// Whether the about window is open
@@ -100,6 +157,8 @@ pub struct AppState {
     pub output_preview_path: Option<PathBuf>,
     /// Whether we've initialized
     pub initialized: bool,
+    /// Current step in the v2 Studio Guide wizard
+    pub studio_step: StudioStep,
     /// Image manipulation: crop images to content
     pub image_manipulation_enabled: bool,
     /// Image manipulation: crop images to content
@@ -110,6 +169,8 @@ pub struct AppState {
     pub binarization_mode: BinarizationMode,
     /// Thickness of the red bounding box in threshold preview (1-10)
     pub box_thickness: u8,
+    /// Whether to show the crop-detection bounding box in threshold preview
+    pub show_crop_bounding_box: bool,
     /// Synchronize pan/zoom across all image previews
     pub sync_preview_pan_zoom: bool,
     /// JPEG output quality (1-100)
@@ -122,6 +183,10 @@ pub struct AppState {
     pub save_all_inputs_to_same_folder: bool,
     /// User-selected shared output folder, when saving all inputs together
     pub shared_output_dir: Option<PathBuf>,
+    /// Recently selected input paths, most recent first
+    pub recent_input_paths: Vec<PathBuf>,
+    /// Recently selected output folders, most recent first
+    pub recent_output_dirs: Vec<PathBuf>,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Whether output info is being calculated in the background
@@ -130,6 +195,8 @@ pub struct AppState {
     pub process_all_running: bool,
     /// Progress for `process_all` (current, total)
     pub process_all_progress: Option<(usize, usize)>,
+    /// Latest completed processing run summary
+    pub last_process_result: Option<ProcessRunSummary>,
     /// Join handles for per-image tasks (used for cancellation)
     pub process_all_handles: Option<Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>>,
     /// Cache of image metadata and thumbnails (path -> info)
@@ -175,6 +242,13 @@ pub struct OutputImageInfo {
     pub threshold_preview_data: Vec<u8>,
     /// Crop bounds (x, y, width, height)
     pub crop_bounds: Option<(u32, u32, u32, u32)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProcessRunSummary {
+    pub processed_count: usize,
+    pub error_count: usize,
+    pub errors: Vec<String>,
 }
 
 /// Messages sent from background processing threads
@@ -246,27 +320,33 @@ impl Default for AppState {
             renamed_files: Vec::new(),
             rename_preview_key: 0,
             max_name_length: MAX_NAME_LENGTH.load(Ordering::SeqCst),
+            max_name_length_enforced: MAX_NAME_LENGTH_ENFORCED.load(Ordering::SeqCst),
             logs_visible: false,
             about_open: false,
             selected_input_file: None,
             input_preview_path: None,
             output_preview_path: None,
             initialized: false,
+            studio_step: StudioStep::default(),
             image_manipulation_enabled: true,
             crop_to_content: true,
             crop_threshold: 20,
             binarization_mode: BinarizationMode::KeepWhite,
             box_thickness: 10,
+            show_crop_bounding_box: true,
             sync_preview_pan_zoom: true,
             jpeg_quality: 90,
             max_file_size_bytes: None,
             flatten_output_hierarchy: false,
             save_all_inputs_to_same_folder: false,
             shared_output_dir: None,
+            recent_input_paths: Vec::new(),
+            recent_output_dirs: Vec::new(),
             selected_output_info: None,
             output_info_loading: false,
             process_all_running: false,
             process_all_progress: None,
+            last_process_result: None,
             process_all_handles: None,
             image_cache: HashMap::new(),
             images_loading: HashSet::new(),
@@ -304,6 +384,27 @@ impl AppState {
 
         // Update max name length
         self.max_name_length = MAX_NAME_LENGTH.load(Ordering::SeqCst);
+        self.max_name_length_enforced = MAX_NAME_LENGTH_ENFORCED.load(Ordering::SeqCst);
+
+        match crate::recent_output_dirs::load(&APP_HOME) {
+            Ok(recent) => {
+                self.recent_output_dirs = recent;
+            }
+            Err(e) => {
+                error!("Failed to load recent output dirs: {}", e);
+                self.recent_output_dirs.clear();
+            }
+        }
+
+        match crate::recent_input_paths::load(&APP_HOME) {
+            Ok(recent) => {
+                self.recent_input_paths = recent;
+            }
+            Err(e) => {
+                error!("Failed to load recent input paths: {}", e);
+                self.recent_input_paths.clear();
+            }
+        }
 
         // Invalidate rename preview cache
         self.rename_preview_key = 0;
@@ -526,6 +627,7 @@ impl AppState {
         let mut hasher = DefaultHasher::new();
         self.image_files.len().hash(&mut hasher);
         self.max_name_length.hash(&mut hasher);
+        self.max_name_length_enforced.hash(&mut hasher);
         self.rename_rules_enabled.hash(&mut hasher);
         self.rename_hyphenate.hash(&mut hasher);
         for r in &self.rename_rules {
@@ -542,7 +644,7 @@ impl AppState {
             self.renamed_files = apply_rules_seq(
                 &self.image_files,
                 &self.rename_rules,
-                self.max_name_length,
+                self.effective_max_name_length(),
                 self.rename_rules_enabled,
                 self.rename_hyphenate,
             );
@@ -604,6 +706,7 @@ impl AppState {
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
+            show_crop_bounding_box: self.show_crop_bounding_box,
             jpeg_quality: self.jpeg_quality,
             max_file_size_bytes: self.max_file_size_bytes,
             description: None, // Preview doesn't need metadata
@@ -667,6 +770,7 @@ impl AppState {
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
+            show_crop_bounding_box: self.show_crop_bounding_box,
             jpeg_quality: self.jpeg_quality,
             max_file_size_bytes: self.max_file_size_bytes,
             description: None, // Will be set per-image if auto-search is enabled
@@ -685,6 +789,7 @@ impl AppState {
 
         self.process_all_running = true;
         self.process_all_progress = Some((0, total));
+        self.last_process_result = None;
 
         // Shared structures for handles and counters so we can cancel and report final totals
         let handles_arc: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> =
@@ -995,6 +1100,7 @@ impl AppState {
             crop_threshold: self.crop_threshold,
             binarization_mode: self.binarization_mode,
             box_thickness: self.box_thickness,
+            show_crop_bounding_box: self.show_crop_bounding_box,
             jpeg_quality: self.jpeg_quality,
             max_file_size_bytes: self.max_file_size_bytes,
             description: None,
@@ -1008,6 +1114,7 @@ impl AppState {
 
         self.process_all_running = true;
         self.process_all_progress = Some((0, 1));
+        self.last_process_result = None;
 
         tokio::spawn(async move {
             // Build settings with optional auto-search description
@@ -1162,6 +1269,11 @@ impl AppState {
                     self.process_all_handles = None;
                     self.process_all_running = false;
                     self.process_all_progress = None;
+                    self.last_process_result = Some(ProcessRunSummary {
+                        processed_count,
+                        error_count,
+                        errors: errors.clone(),
+                    });
                     info!(
                         "Processing complete: {} files processed, {} errors",
                         processed_count, error_count
@@ -1206,15 +1318,32 @@ impl AppState {
                     self.process_all_running = false;
                     self.process_all_progress = None;
                     if success {
+                        self.last_process_result = Some(ProcessRunSummary {
+                            processed_count: 1,
+                            error_count: 0,
+                            errors: Vec::new(),
+                        });
                         info!("Processed 1 file successfully.");
                     } else {
-                        error!(
-                            "Failed to process file: {}",
-                            error.unwrap_or_else(|| "Unknown error".to_string())
-                        );
+                        let error = error.unwrap_or_else(|| "Unknown error".to_string());
+                        self.last_process_result = Some(ProcessRunSummary {
+                            processed_count: 0,
+                            error_count: 1,
+                            errors: vec![error.clone()],
+                        });
+                        error!("Failed to process file: {}", error);
                     }
                 }
             }
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn effective_max_name_length(&self) -> usize {
+        if self.max_name_length_enforced {
+            self.max_name_length
+        } else {
+            usize::MAX
         }
     }
 
@@ -1339,4 +1468,63 @@ fn apply_rules_seq(
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_all_completion_records_latest_result() {
+        let mut state = AppState::default();
+        state.process_all_running = true;
+        state.process_all_progress = Some((1, 2));
+
+        state
+            .background_sender
+            .send(BackgroundMessage::ProcessAllComplete {
+                processed_count: 2,
+                error_count: 1,
+                errors: vec!["one failed".to_string()],
+            })
+            .expect("send completion");
+
+        state.poll_background_tasks();
+
+        assert!(!state.process_all_running);
+        assert_eq!(state.process_all_progress, None);
+        assert_eq!(
+            state.last_process_result,
+            Some(ProcessRunSummary {
+                processed_count: 2,
+                error_count: 1,
+                errors: vec!["one failed".to_string()],
+            })
+        );
+    }
+
+    #[test]
+    fn selected_processing_failure_records_latest_result() {
+        let mut state = AppState::default();
+        state.process_all_running = true;
+
+        state
+            .background_sender
+            .send(BackgroundMessage::ProcessSelectedComplete {
+                success: false,
+                error: Some("bad image".to_string()),
+            })
+            .expect("send completion");
+
+        state.poll_background_tasks();
+
+        assert_eq!(
+            state.last_process_result,
+            Some(ProcessRunSummary {
+                processed_count: 0,
+                error_count: 1,
+                errors: vec!["bad image".to_string()],
+            })
+        );
+    }
 }

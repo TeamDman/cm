@@ -3,6 +3,8 @@
 mod behavior;
 mod folder_picker;
 mod layouts;
+mod plan;
+mod reactor_shell;
 pub mod state;
 mod tiles;
 pub mod tree_view;
@@ -14,6 +16,7 @@ use crate::inputs;
 use behavior::CmBehavior;
 use behavior::CmPane;
 use behavior::create_default_tree;
+use behavior::create_product_search_tree;
 use eframe::egui::Align2;
 use eframe::egui::Color32;
 use eframe::egui::Id;
@@ -27,6 +30,7 @@ use egui_toast::ToastKind;
 use egui_toast::ToastOptions;
 use egui_toast::Toasts;
 use eyre::eyre;
+use reactor_shell::ReactorShellMode;
 use state::AppState;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -36,6 +40,43 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ToolChoice {
+    V1,
+    V2,
+    ProductSearch,
+}
+
+impl ToolChoice {
+    fn label(self) -> &'static str {
+        match self {
+            ToolChoice::V1 => "Tool v1",
+            ToolChoice::V2 => "Tool v2",
+            ToolChoice::ProductSearch => "Product Search",
+        }
+    }
+
+    fn button_label(self) -> &'static str {
+        match self {
+            ToolChoice::V1 => "Run Tool v1",
+            ToolChoice::V2 => "Run Tool v2",
+            ToolChoice::ProductSearch => "Product Search",
+        }
+    }
+
+    fn uses_studio_layouts(self) -> bool {
+        matches!(self, ToolChoice::V1)
+    }
+}
+
+pub(crate) fn run_reactor_shell_main_menu() -> eyre::Result<()> {
+    reactor_shell::run_blocking(ReactorShellMode::MainMenu)
+}
+
+pub(crate) fn run_reactor_shell_studio_v2() -> eyre::Result<()> {
+    reactor_shell::run_blocking(ReactorShellMode::StudioV2)
+}
+
 /// Run the GUI; the function blocks in place on the eframe app using
 /// `tokio::task::block_in_place`.
 /// # Errors
@@ -43,6 +84,16 @@ use tracing::info;
 /// # Panics
 /// Panics if the blocking GUI task returns an error after startup.
 pub fn run_gui() -> eyre::Result<()> {
+    run_gui_with_initial_tool(None)
+}
+
+/// Run the GUI with an optional starting tool. Supplying a tool skips the
+/// main menu and opens that surface directly.
+/// # Errors
+/// Returns an error if the GUI fails to start or run.
+/// # Panics
+/// Panics if the blocking GUI task returns an error after startup.
+pub(crate) fn run_gui_with_initial_tool(initial_tool: Option<ToolChoice>) -> eyre::Result<()> {
     info!("Starting CM GUI");
     // Create a dedicated runtime and run the GUI
     let rt = tokio::runtime::Runtime::new()?;
@@ -53,7 +104,7 @@ pub fn run_gui() -> eyre::Result<()> {
             eframe::run_native(
                 "CM - Creative Memories Photo Manager",
                 native_options,
-                Box::new(|cc| Ok(Box::new(CmApp::new(cc)))),
+                Box::new(move |cc| Ok(Box::new(CmApp::new(cc, initial_tool)))),
             )
             .map_err(|e| eyre!("Failed to run eframe: {}", e))
         });
@@ -68,6 +119,8 @@ pub fn run_gui() -> eyre::Result<()> {
 }
 
 struct CmApp {
+    tool_choice: Option<ToolChoice>,
+    main_menu_status: Option<String>,
     tree: egui_tiles::Tree<CmPane>,
     state: AppState,
     /// Texture handle for output preview (to show cropped images)
@@ -95,7 +148,7 @@ struct CmApp {
 }
 
 impl CmApp {
-    fn new(cc: &eframe::CreationContext) -> Self {
+    fn new(cc: &eframe::CreationContext, initial_tool: Option<ToolChoice>) -> Self {
         // Install image loaders for egui
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
@@ -123,6 +176,8 @@ impl CmApp {
         let initial_event_count = crate::tracing::event_collector().events().len();
 
         CmApp {
+            tool_choice: initial_tool,
+            main_menu_status: None,
             tree,
             state,
             output_texture: None,
@@ -145,8 +200,24 @@ impl CmApp {
 impl eframe::App for CmApp {
     #[expect(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.tool_choice.is_none() {
+            draw_main_menu(ctx, &mut self.tool_choice, &mut self.main_menu_status);
+            return;
+        }
+
         // Initialize on first frame
         if !self.state.initialized {
+            self.tree = match self.tool_choice.expect("tool choice is selected") {
+                ToolChoice::V1 => create_default_tree(),
+                ToolChoice::V2 => {
+                    if let Err(error) = reactor_shell::spawn_detached(ReactorShellMode::StudioV2) {
+                        error!("Failed to launch Studio v2 Reactor shell: {error}");
+                    }
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    return;
+                }
+                ToolChoice::ProductSearch => create_product_search_tree(),
+            };
             self.state.reload_data();
             self.state.initialized = true;
         }
@@ -166,12 +237,15 @@ impl eframe::App for CmApp {
         self.state.handle_deferred_actions();
 
         // Top menu bar
+        let selected_tool = self.tool_choice.expect("tool choice is selected");
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 // Refresh button
                 if ui.button("Refresh").clicked() {
                     self.state.reload_data();
                 }
+
+                ui.label(selected_tool.label());
 
                 // Logs toggle button
                 if ui
@@ -190,59 +264,61 @@ impl eframe::App for CmApp {
                     self.state.about_open = !self.state.about_open;
                 }
 
-                // Layout menu
-                ui.menu_button("Layout", |ui| {
-                    // Custom layouts (active shown)
-                    let customs = self.layout_manager.list_custom();
-                    if customs.is_empty() {
-                        if ui.button("No custom layout").clicked() {}
-                    } else {
-                        for name in customs {
-                            if Some(name.as_str()) == self.layout_manager.active_name() {
-                                ui.label(format!("{name} (active)"));
-                            } else if ui.button(&name).clicked()
-                                && let Ok(layout) = self.layout_manager.load_named(&name)
-                            {
-                                self.tree = layout.apply_to_tree(self.tree.id());
-                                self.layout_manager.set_active(&name);
+                if selected_tool.uses_studio_layouts() {
+                    // Layout menu
+                    ui.menu_button("Layout", |ui| {
+                        // Custom layouts (active shown)
+                        let customs = self.layout_manager.list_custom();
+                        if customs.is_empty() {
+                            if ui.button("No custom layout").clicked() {}
+                        } else {
+                            for name in customs {
+                                if Some(name.as_str()) == self.layout_manager.active_name() {
+                                    ui.label(format!("{name} (active)"));
+                                } else if ui.button(&name).clicked()
+                                    && let Ok(layout) = self.layout_manager.load_named(&name)
+                                {
+                                    self.tree = layout.apply_to_tree(self.tree.id());
+                                    self.layout_manager.set_active(&name);
+                                }
                             }
                         }
-                    }
 
-                    ui.separator();
+                        ui.separator();
 
-                    // Presets
-                    for preset in self.layout_manager.list_presets() {
-                        if ui.button(&preset).clicked()
-                            && let Ok(new_name) = self
+                        // Presets
+                        for preset in self.layout_manager.list_presets() {
+                            if ui.button(&preset).clicked()
+                                && let Ok(new_name) = self
+                                    .layout_manager
+                                    .activate_preset_as_custom(&preset, self.tree.id())
+                                && let Ok(layout) = self.layout_manager.load_named(&new_name)
+                            {
+                                self.tree = layout.apply_to_tree(self.tree.id());
+                                self.layout_manager.set_active(&new_name);
+                            }
+                        }
+
+                        ui.separator();
+
+                        if ui.button("Create New").clicked()
+                            && let Some(layout) = Layout::from_tree(&self.tree)
+                        {
+                            let name =
+                                format!("Custom {}", self.layout_manager.list_custom().len() + 1);
+                            if let Ok(new_name) = self
                                 .layout_manager
-                                .activate_preset_as_custom(&preset, self.tree.id())
-                            && let Ok(layout) = self.layout_manager.load_named(&new_name)
-                        {
-                            self.tree = layout.apply_to_tree(self.tree.id());
-                            self.layout_manager.set_active(&new_name);
+                                .create_custom_from_layout(&name, &layout)
+                            {
+                                self.layout_manager.set_active(&new_name);
+                            }
                         }
-                    }
 
-                    ui.separator();
-
-                    if ui.button("Create New").clicked()
-                        && let Some(layout) = Layout::from_tree(&self.tree)
-                    {
-                        let name =
-                            format!("Custom {}", self.layout_manager.list_custom().len() + 1);
-                        if let Ok(new_name) = self
-                            .layout_manager
-                            .create_custom_from_layout(&name, &layout)
-                        {
-                            self.layout_manager.set_active(&new_name);
+                        if ui.button("Delete Active").clicked() {
+                            let _ = self.layout_manager.delete_active();
                         }
-                    }
-
-                    if ui.button("Delete Active").clicked() {
-                        let _ = self.layout_manager.delete_active();
-                    }
-                });
+                    });
+                }
 
                 // Theme switch
                 egui::widgets::global_theme_preference_switch(ui);
@@ -272,7 +348,9 @@ impl eframe::App for CmApp {
             self.tree.ui(&mut behavior, ui);
 
             // Autosave active layout if tree changed
-            if let Some(layout) = Layout::from_tree(&self.tree) {
+            if selected_tool.uses_studio_layouts()
+                && let Some(layout) = Layout::from_tree(&self.tree)
+            {
                 let _ = self.layout_manager.maybe_autosave(&layout);
             }
         });
@@ -411,5 +489,66 @@ impl eframe::App for CmApp {
                 }
             }
         }
+    }
+}
+
+fn draw_main_menu(
+    ctx: &egui::Context,
+    tool_choice: &mut Option<ToolChoice>,
+    main_menu_status: &mut Option<String>,
+) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        ui.vertical_centered(|ui| {
+            ui.add_space((ui.available_height() * 0.3).min(160.0));
+            ui.heading("CM");
+            ui.add_space(24.0);
+
+            ui.spacing_mut().item_spacing.y = 12.0;
+            for choice in [ToolChoice::V1, ToolChoice::V2, ToolChoice::ProductSearch] {
+                let button =
+                    egui::Button::new(choice.button_label()).min_size(egui::vec2(240.0, 44.0));
+                if ui.add(button).clicked() {
+                    if choice == ToolChoice::V2 {
+                        match reactor_shell::spawn_detached(ReactorShellMode::StudioV2) {
+                            Ok(()) => {
+                                info!("Launched Studio v2 Reactor shell");
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                            Err(error) => {
+                                error!("Failed to launch Studio v2 Reactor shell: {error}");
+                                *main_menu_status =
+                                    Some(format!("Failed to launch Studio v2: {error}"));
+                            }
+                        }
+                    } else {
+                        *tool_choice = Some(choice);
+                        info!("Selected {}", choice.label());
+                    }
+                }
+            }
+
+            if let Some(status) = main_menu_status {
+                ui.add_space(12.0);
+                ui.label(status.as_str());
+            }
+        });
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ToolChoice;
+
+    #[test]
+    fn product_search_is_a_main_menu_utility_not_a_studio_layout() {
+        assert_eq!(ToolChoice::ProductSearch.button_label(), "Product Search");
+        assert_eq!(ToolChoice::ProductSearch.label(), "Product Search");
+        assert!(!ToolChoice::ProductSearch.uses_studio_layouts());
+    }
+
+    #[test]
+    fn only_v1_uses_egui_studio_layouts() {
+        assert!(ToolChoice::V1.uses_studio_layouts());
+        assert!(!ToolChoice::V2.uses_studio_layouts());
     }
 }

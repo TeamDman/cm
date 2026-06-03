@@ -19,6 +19,8 @@ use std::sync::Mutex;
 
 /// Maximum preview dimension (width or height)
 const MAX_PREVIEW_SIZE: u32 = 1024;
+/// Default preferred output size when file-size reduction is enabled.
+pub const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Result of processing a single image
 #[derive(Clone, Debug)]
@@ -68,6 +70,8 @@ pub struct ProcessingSettings {
     pub binarization_mode: BinarizationMode,
     /// Thickness of the red bounding box (1-10)
     pub box_thickness: u8,
+    /// Whether to draw the crop-detection bounding box in the threshold preview.
+    pub show_crop_bounding_box: bool,
     /// JPEG quality (1-100, default 90)
     pub jpeg_quality: u8,
     /// Optional maximum output file size in bytes
@@ -84,6 +88,7 @@ impl Default for ProcessingSettings {
             crop_threshold: 20,
             binarization_mode: BinarizationMode::default(),
             box_thickness: 10,
+            show_crop_bounding_box: true,
             jpeg_quality: 90,
             max_file_size_bytes: None,
             description: None,
@@ -187,6 +192,7 @@ pub fn process_image(path: &Path, settings: &ProcessingSettings) -> Result<Proce
         settings.crop_threshold,
         settings.binarization_mode,
         box_thickness,
+        settings.show_crop_bounding_box,
     )?;
 
     // Apply processing steps
@@ -520,6 +526,7 @@ fn create_threshold_preview(
     threshold: u8,
     mode: BinarizationMode,
     box_thickness: u8,
+    show_bounding_box: bool,
 ) -> Result<Vec<u8>> {
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
@@ -559,8 +566,10 @@ fn create_threshold_preview(
     }
 
     // Draw red bounding box if there's content to crop
-    let bounds = find_content_bounds(&rgba, background_color, threshold);
-    if let Some((min_x, min_y, max_x, max_y)) = bounds {
+    if show_bounding_box
+        && let Some((min_x, min_y, max_x, max_y)) =
+            find_content_bounds(&rgba, background_color, threshold)
+    {
         draw_bounding_box(
             &mut binary_img,
             min_x,
@@ -1316,5 +1325,49 @@ mod tests {
         assert!(processed.data.len() < original.len());
         assert!(processed.data.len() as u64 <= max_size);
         Ok(())
+    }
+
+    #[test]
+    fn threshold_preview_respects_bounding_box_visibility() -> Result<()> {
+        let dir = tempdir()?;
+        let file = dir.path().join("boxed.png");
+        let mut img = RgbaImage::from_pixel(16, 16, Rgba([255, 255, 255, 255]));
+        for y in 4..12 {
+            for x in 4..12 {
+                img.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+            }
+        }
+        DynamicImage::ImageRgba8(img).save(&file)?;
+
+        let with_box = process_image(
+            &file,
+            &ProcessingSettings {
+                crop_to_content: true,
+                show_crop_bounding_box: true,
+                box_thickness: 1,
+                ..ProcessingSettings::default()
+            },
+        )?;
+        let without_box = process_image(
+            &file,
+            &ProcessingSettings {
+                crop_to_content: true,
+                show_crop_bounding_box: false,
+                box_thickness: 1,
+                ..ProcessingSettings::default()
+            },
+        )?;
+
+        assert!(red_pixel_count(&with_box.threshold_preview_data)? > 0);
+        assert_eq!(red_pixel_count(&without_box.threshold_preview_data)?, 0);
+        Ok(())
+    }
+
+    fn red_pixel_count(bytes: &[u8]) -> Result<usize> {
+        let image = image::load_from_memory(bytes)?.to_rgba8();
+        Ok(image
+            .pixels()
+            .filter(|pixel| pixel.0 == [255, 0, 0, 255])
+            .count())
     }
 }
