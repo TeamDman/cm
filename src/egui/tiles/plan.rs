@@ -63,7 +63,7 @@ pub fn draw_plan_tile(ui: &mut egui::Ui, state: &mut AppState) {
                         DecisionStatus::Invalid => egui::Color32::RED,
                     };
                     ui.horizontal_wrapped(|ui| {
-                        ui.colored_label(color, status_label(&decision.status));
+                        ui.colored_label(color, status_label(decision.status));
                         ui.strong(&decision.name);
                         ui.label(&decision.value);
                     });
@@ -106,7 +106,7 @@ pub fn draw_plan_tile(ui: &mut egui::Ui, state: &mut AppState) {
         });
 }
 
-fn status_label(status: &DecisionStatus) -> &'static str {
+fn status_label(status: DecisionStatus) -> &'static str {
     match status {
         DecisionStatus::Waiting => "waiting",
         DecisionStatus::Ready => "ready",

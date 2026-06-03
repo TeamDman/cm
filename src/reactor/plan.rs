@@ -6,10 +6,12 @@ use crate::image_processing;
 use crate::image_processing::OutputPathOptions;
 use facet::Facet;
 use std::collections::HashSet;
+use std::fmt::Write as _;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-#[derive(Clone, Debug, PartialEq, Eq, Facet)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Facet)]
 #[repr(u8)]
 pub enum DecisionStatus {
     Waiting,
@@ -81,67 +83,73 @@ impl CmPlan {
             .count()
     }
 
-    #[must_use]
-    pub fn render_text(&self) -> String {
+    /// # Errors
+    ///
+    /// Fails if writeln! fails on the output string, which should be infallible since we're writing to a String.
+    pub fn render_text(&self) -> eyre::Result<String> {
         let mut out = String::new();
         out.push_str("CM v2 plan\n");
         out.push_str("==========\n\n");
-        out.push_str(&format!(
-            "Decisions: {} ready, {} waiting, {} invalid\n",
+        writeln!(
+            out,
+            "Decisions: {} ready, {} waiting, {} invalid",
             self.ready_count(),
             self.waiting_count(),
             self.invalid_count()
-        ));
-        out.push_str(&format!(
+        )?;
+        write!(
+            out,
             "Plan entries: {}\nErrors: {}\n\n",
             self.entries.len(),
             self.errors.len()
-        ));
+        )?;
 
         out.push_str("Decisions\n---------\n");
         for decision in &self.decisions {
-            out.push_str(&format!(
-                "- [{}] {}: {}\n",
+            writeln!(
+                out,
+                "- [{}] {}: {}",
                 decision.status.as_str(),
                 decision.name,
                 decision.value
-            ));
+            )?;
         }
 
         out.push_str("\nEntries\n-------\n");
         for (idx, entry) in self.entries.iter().enumerate() {
-            out.push_str(&format!("{}. {}\n", idx + 1, entry.input_path.display()));
+            writeln!(out, "{}. {}", idx + 1, entry.input_path.display())?;
             if let Some(root) = &entry.input_root {
-                out.push_str(&format!("   input root: {}\n", root.display()));
+                writeln!(out, "   input root: {}", root.display())?;
             }
             if let Some(name) = &entry.renamed_file_name {
-                out.push_str(&format!("   output name: {name}\n"));
+                writeln!(out, "   output name: {name}")?;
             }
             if let Some(path) = &entry.desired_output_path {
-                out.push_str(&format!("   desired output: {}\n", path.display()));
+                writeln!(out, "   desired output: {}", path.display())?;
             }
             if let Some(path) = &entry.reserved_output_path {
-                out.push_str(&format!("   reserved output: {}\n", path.display()));
+                writeln!(out, "   reserved output: {}", path.display())?;
             }
             for transformation in &entry.transformations {
-                out.push_str(&format!(
-                    "   transform: {} - {}\n",
+                writeln!(
+                    out,
+                    "   transform: {} - {}",
                     transformation.name, transformation.detail
-                ));
+                )?;
             }
             for expectation in &entry.expectations {
-                out.push_str(&format!("   expect: {expectation}\n"));
+                writeln!(out, "   expect: {expectation}")?;
             }
         }
 
         if !self.errors.is_empty() {
             out.push_str("\nErrors\n------\n");
             for error in &self.errors {
-                out.push_str(&format!("- {error}\n"));
+                writeln!(out, "- {error}")?;
             }
         }
 
-        out
+        Ok(out)
     }
 
     /// Render the plan as structured JSON for agent and automation inspection.
@@ -165,7 +173,7 @@ impl PlanEntry {
 }
 
 impl DecisionStatus {
-    fn as_str(&self) -> &'static str {
+    fn as_str(self) -> &'static str {
         match self {
             DecisionStatus::Waiting => "waiting",
             DecisionStatus::Ready => "ready",
@@ -196,7 +204,7 @@ pub fn build_plan(state: &mut AppState) -> CmPlan {
 /// Returns an error if the app home cannot be created or either export file cannot be written.
 pub fn export_plan(home: &AppHome, cm_plan: &CmPlan) -> eyre::Result<()> {
     home.ensure_dir()?;
-    std::fs::write(home.file_path("last-plan.txt"), cm_plan.render_text())?;
+    std::fs::write(home.file_path("last-plan.txt"), cm_plan.render_text()?)?;
     std::fs::write(home.file_path("last-plan.json"), cm_plan.render_json()?)?;
     Ok(())
 }
@@ -419,36 +427,13 @@ fn build_entries(
             ));
         }
 
-        if let Some(path) = &reserved_output_path {
-            if desired_output_path.as_ref() == Some(input_path) {
-                errors.push(format!(
-                    "Output would overwrite input: {}",
-                    input_path.display()
-                ));
-            } else if path == input_path {
-                errors.push(format!(
-                    "Reserved output would overwrite input: {}",
-                    input_path.display()
-                ));
-            } else {
-                expectations.push("output path does not overwrite input path".to_string());
-            }
-            if let Some(desired) = &desired_output_path
-                && desired != path
-            {
-                expectations.push(format!(
-                    "output path collision handled: {} -> {}",
-                    desired.display(),
-                    path.display()
-                ));
-            }
-            if let Some(parent) = path.parent() {
-                expectations.push(format!(
-                    "output parent can be created: {}",
-                    parent.display()
-                ));
-            }
-        }
+        populate_output_path_details(
+            input_path,
+            desired_output_path.as_ref(),
+            reserved_output_path.as_ref(),
+            &mut expectations,
+            &mut errors,
+        );
 
         entries.push(PlanEntry {
             input_path: input_path.clone(),
@@ -464,9 +449,52 @@ fn build_entries(
     (entries, errors)
 }
 
+fn populate_output_path_details(
+    input_path: &Path,
+    desired_output_path: Option<&PathBuf>,
+    reserved_output_path: Option<&PathBuf>,
+    expectations: &mut Vec<String>,
+    errors: &mut Vec<String>,
+) {
+    let Some(path) = reserved_output_path else {
+        return;
+    };
+
+    if desired_output_path.is_some_and(|desired| desired.as_path() == input_path) {
+        errors.push(format!(
+            "Output would overwrite input: {}",
+            input_path.display()
+        ));
+    } else if path.as_path() == input_path {
+        errors.push(format!(
+            "Reserved output would overwrite input: {}",
+            input_path.display()
+        ));
+    } else {
+        expectations.push("output path does not overwrite input path".to_string());
+    }
+
+    if let Some(desired) = desired_output_path
+        && desired != path
+    {
+        expectations.push(format!(
+            "output path collision handled: {} -> {}",
+            desired.display(),
+            path.display()
+        ));
+    }
+
+    if let Some(parent) = path.parent() {
+        expectations.push(format!(
+            "output parent can be created: {}",
+            parent.display()
+        ));
+    }
+}
+
 fn build_transformations(
     state: &AppState,
-    input_path: &PathBuf,
+    input_path: &Path,
     renamed_file_name: Option<&str>,
     desired_output_path: Option<&PathBuf>,
     reserved_output_path: Option<&PathBuf>,
@@ -510,7 +538,7 @@ fn build_transformations(
 
 fn rename_transformation(
     state: &AppState,
-    input_path: &PathBuf,
+    input_path: &Path,
     renamed_file_name: Option<&str>,
 ) -> PlanTransformation {
     let original_name = input_path
@@ -537,9 +565,7 @@ fn rename_transformation(
 }
 
 fn image_processing_transformation(state: &AppState) -> PlanTransformation {
-    let detail = if !state.image_manipulation_enabled {
-        "preserve original image bytes".to_string()
-    } else {
+    let detail = if state.image_manipulation_enabled {
         let crop = if state.crop_to_content {
             let box_label = if state.show_crop_bounding_box {
                 format!("show preview box {} px", state.box_thickness)
@@ -558,6 +584,8 @@ fn image_processing_transformation(state: &AppState) -> PlanTransformation {
             |bytes| format!("reduce file size to {}", format_size(bytes)),
         );
         format!("{crop}; JPEG quality {}; {size}", state.jpeg_quality)
+    } else {
+        "preserve original image bytes".to_string()
     };
 
     PlanTransformation {
@@ -624,7 +652,7 @@ mod tests {
 
         assert_eq!(plan.entries.len(), 0);
         assert!(plan.waiting_count() > 0);
-        assert!(plan.render_text().contains("CM v2 plan"));
+        assert!(plan.render_text().unwrap().contains("CM v2 plan"));
     }
 
     #[test]
@@ -665,7 +693,7 @@ mod tests {
                 "write"
             ]
         );
-        assert!(plan.render_text().contains("transform: rename"));
+        assert!(plan.render_text().unwrap().contains("transform: rename"));
         Ok(())
     }
 
@@ -698,6 +726,7 @@ mod tests {
         );
         assert!(
             plan.render_text()
+                .unwrap()
                 .contains("max file name length: not enforced")
         );
         Ok(())

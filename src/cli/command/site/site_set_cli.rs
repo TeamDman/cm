@@ -1,12 +1,13 @@
-use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use std::ffi::OsString;
+use facet::Facet;
+use figue::{self as args};
 
 /// Set the active site by id
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[facet(rename_all = "kebab-case")]
 pub struct SiteSetArgs {
     /// Site identifier to set
+    #[facet(args::positional)]
     pub id: String,
 }
 
@@ -19,11 +20,5 @@ impl SiteSetArgs {
         crate::SiteId::set_to(&self.id)?;
         println!("Setting site to: {}", self.id);
         Ok(())
-    }
-}
-
-impl ToArgs for SiteSetArgs {
-    fn to_args(&self) -> Vec<OsString> {
-        vec![self.id.clone().into()]
     }
 }

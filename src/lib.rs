@@ -18,8 +18,6 @@ pub mod tracing;
 pub mod user_id;
 
 use crate::cli::Cli;
-use clap::CommandFactory;
-use clap::FromArgMatches;
 pub use max_name_length::*;
 pub use session_id::*;
 pub use site_id::*;
@@ -30,8 +28,7 @@ pub use user_id::*;
 /// Returns an error if CLI parsing fails or if tracing initialization fails or if the invoked command fails.
 pub fn main() -> eyre::Result<()> {
     color_eyre::install()?;
-    let cli = Cli::command();
-    let cli = Cli::from_arg_matches(&cli.get_matches())?;
+    let cli: Cli = figue::from_std_args().unwrap();
     let app_home = crate::app_home::AppHome::resolve()?;
 
     // Initialize tracing based on global args (debug and --json/--log-file)

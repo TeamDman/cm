@@ -1,7 +1,6 @@
-use crate::cli::command::search::search_command::OutputFormat;
-use crate::cli::command::search::search_command::SearchArgs;
 use crate::egui::state::AppState;
 use crate::egui::state::BackgroundMessage;
+use crate::product_search::SearchRequest;
 use chrono::Local;
 use eframe::egui::Button;
 use eframe::egui::RichText;
@@ -18,7 +17,7 @@ use tokio::sync::mpsc::UnboundedSender;
 /// suggest a query formed by replacing hyphens with spaces, inserting spaces
 /// before camel-case boundaries (but not inside ALL-CAPS), stripping numbers,
 /// and omitting any single-character tokens.
-pub fn suggest_search(filename: &str) -> SearchArgs {
+pub fn suggest_search(filename: &str) -> SearchRequest {
     let re_sku = Regex::new(r"\b(\d{6})\b").unwrap();
     let re_digits = Regex::new(r"\d+").unwrap();
     // Insert spaces for transitions like "HTMLParser" -> "HTML Parser"
@@ -33,11 +32,10 @@ pub fn suggest_search(filename: &str) -> SearchArgs {
 
     if let Some(cap) = re_sku.captures(&stem) {
         let sku = cap.get(1).unwrap().as_str().to_string();
-        return SearchArgs {
+        return SearchRequest {
             query: None,
             sku: Some(sku),
             no_cache: false,
-            output: OutputFormat::Json,
         };
     }
 
@@ -63,7 +61,7 @@ pub fn suggest_search(filename: &str) -> SearchArgs {
         .trim()
         .to_string();
 
-    SearchArgs {
+    SearchRequest {
         query: if suggestion.is_empty() {
             Some(stem)
         } else {
@@ -71,19 +69,21 @@ pub fn suggest_search(filename: &str) -> SearchArgs {
         },
         sku: None,
         no_cache: false,
-        output: OutputFormat::Json,
     }
 }
 
 // Spawn a tokio task to perform a product search and forward the result to the background channel.
-fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs) {
+fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, request: SearchRequest) {
     tokio::spawn(async move {
-        match args.search().await {
+        match request.await {
             Ok(res) => {
                 // Prettify once on the background thread and send both the parsed struct and the prettified string
                 // Format as json first, fallback to facet_pretty if that fails
-                let pretty = facet_json::to_string_pretty(&res.results)
-                    .unwrap_or(PrettyPrinter::new().with_colors(false).format(&res.results));
+                let pretty = facet_json::to_string_pretty(&res.results).unwrap_or(
+                    PrettyPrinter::new()
+                        .with_colors(false.into())
+                        .format(&res.results),
+                );
                 let _ = tx.send(BackgroundMessage::ProductSearchResult {
                     result: Some(res),
                     pretty: Some(pretty),
@@ -116,13 +116,12 @@ pub fn submit_product_search(state: &mut AppState) {
         Some(state.product_search_sku.clone())
     };
     let tx = state.background_sender.clone();
-    let args = SearchArgs {
+    let request = SearchRequest {
         query: if query.is_empty() { None } else { Some(query) },
         sku,
         no_cache: false,
-        output: OutputFormat::Json,
     };
-    spawn_product_search(tx, args);
+    spawn_product_search(tx, request);
 }
 
 #[expect(clippy::too_many_lines)]

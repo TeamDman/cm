@@ -3,12 +3,12 @@
 use crate::MAX_NAME_LENGTH;
 use crate::MAX_NAME_LENGTH_ENFORCED;
 use crate::app_home::APP_HOME;
-use crate::cli::command::search::search_result_ok::SearchResultOk;
 use crate::image_processing::BinarizationMode;
 use crate::image_processing::OutputPathOptions;
 use crate::image_processing::ProcessingSettings;
 use crate::image_processing::{self};
 use crate::inputs;
+use crate::product_search::SearchResultOk;
 use crate::rename_rules::RenameRule;
 use chrono::DateTime;
 use chrono::Local;
@@ -27,7 +27,6 @@ use tokio::sync::mpsc::{self};
 use tracing::error;
 use tracing::info;
 use tracing::warn;
-
 /// Thumbnail size for cached previews
 pub const THUMBNAIL_SIZE: u32 = 128;
 
@@ -915,7 +914,7 @@ impl AppState {
 
                         if should_search {
                             // Perform the search
-                            let search_result = suggestion.search().await;
+                            let search_result = suggestion.await;
 
                             if let Ok(result) = search_result
                                 && let Some(results) = &result.results
@@ -1134,7 +1133,7 @@ impl AppState {
 
                     if should_search {
                         // Perform the search (mutex is inside search())
-                        if let Ok(result) = suggestion.search().await
+                        if let Ok(result) = suggestion.await
                             && let Some(results) = &result.results
                         {
                             // Build description from search results
@@ -1219,122 +1218,140 @@ impl AppState {
     pub fn poll_background_tasks(&mut self) {
         // Process all pending messages
         while let Ok(msg) = self.background_receiver.try_recv() {
-            match msg {
-                BackgroundMessage::InputPathsReady { paths } => {
-                    self.input_paths = paths;
-                    self.input_paths_loading = LoadingState::Loaded;
-                    // Now start discovering image files
-                    self.start_discover_image_files();
-                }
-                BackgroundMessage::InputPathsError { error } => {
-                    self.input_paths_loading = LoadingState::Failed(error.clone());
-                    error!("Failed to load inputs: {}", error);
-                    self.input_paths.clear();
-                }
-                BackgroundMessage::ImageFilesReady { mut files } => {
-                    files.sort();
-                    self.image_files = files;
-                    self.image_files_loading = LoadingState::Loaded;
-                    // Now start loading image metadata in background
-                    self.start_image_cache_loading();
-                }
-                BackgroundMessage::ImageFilesError { error } => {
-                    self.image_files_loading = LoadingState::Failed(error.clone());
-                    error!("Failed to list files: {}", error);
-                    self.image_files.clear();
-                }
-                BackgroundMessage::OutputInfoReady { input_path, info } => {
-                    // Only update if this is still the selected file
-                    if self.selected_input_file.as_ref() == Some(&input_path) {
-                        self.selected_output_info = Some(info);
-                        self.output_info_loading = false;
-                    }
-                }
-                BackgroundMessage::OutputInfoError { input_path, error } => {
-                    if self.selected_input_file.as_ref() == Some(&input_path) {
-                        self.output_info_loading = false;
-                        error!(
-                            "Failed to process image {}: {}",
-                            input_path.display(),
-                            error
-                        );
-                    }
-                }
-                BackgroundMessage::ProcessAllComplete {
-                    processed_count,
-                    error_count,
-                    errors,
-                } => {
-                    // Clear handles if any
-                    self.process_all_handles = None;
-                    self.process_all_running = false;
-                    self.process_all_progress = None;
-                    self.last_process_result = Some(ProcessRunSummary {
-                        processed_count,
-                        error_count,
-                        errors: errors.clone(),
-                    });
-                    info!(
-                        "Processing complete: {} files processed, {} errors",
-                        processed_count, error_count
-                    );
-                    if !errors.is_empty() {
-                        error!("Processing errors: {:?}", errors);
-                    }
-                }
-                BackgroundMessage::ProcessAllProgress {
-                    current,
-                    total,
-                    current_file: _,
-                } => {
-                    self.process_all_progress = Some((current, total));
-                }
-                BackgroundMessage::ImageCacheReady { path, info } => {
-                    self.images_loading.remove(&path);
-                    self.image_cache.insert(path, info);
-                }
-                BackgroundMessage::ImageCacheError { path } => {
-                    self.images_loading.remove(&path);
-                }
-                BackgroundMessage::ProductSearchResult {
-                    result,
-                    pretty,
-                    error,
-                    received_at,
-                } => {
-                    // Record when we got the response so UI can show it
-                    self.product_search_last_response = Some(received_at);
+            self.handle_background_message(msg);
+        }
+    }
 
-                    if let Some(err) = error {
-                        error!("Product search failed: {}", err);
-                        self.product_search_result_raw = None;
-                        self.product_search_result_pretty.clear();
-                    } else {
-                        self.product_search_result_raw = result;
-                        self.product_search_result_pretty = pretty.unwrap_or_default();
-                    }
-                }
-                BackgroundMessage::ProcessSelectedComplete { success, error } => {
-                    self.process_all_running = false;
-                    self.process_all_progress = None;
-                    if success {
-                        self.last_process_result = Some(ProcessRunSummary {
-                            processed_count: 1,
-                            error_count: 0,
-                            errors: Vec::new(),
-                        });
-                        info!("Processed 1 file successfully.");
-                    } else {
-                        let error = error.unwrap_or_else(|| "Unknown error".to_string());
-                        self.last_process_result = Some(ProcessRunSummary {
-                            processed_count: 0,
-                            error_count: 1,
-                            errors: vec![error.clone()],
-                        });
-                        error!("Failed to process file: {}", error);
-                    }
+    fn handle_background_message(&mut self, msg: BackgroundMessage) {
+        match msg {
+            BackgroundMessage::InputPathsReady { paths } => {
+                self.input_paths = paths;
+                self.input_paths_loading = LoadingState::Loaded;
+                self.start_discover_image_files();
+            }
+            BackgroundMessage::InputPathsError { error } => {
+                self.input_paths_loading = LoadingState::Failed(error.clone());
+                error!("Failed to load inputs: {}", error);
+                self.input_paths.clear();
+            }
+            BackgroundMessage::ImageFilesReady { mut files } => {
+                files.sort();
+                self.image_files = files;
+                self.image_files_loading = LoadingState::Loaded;
+                self.start_image_cache_loading();
+            }
+            BackgroundMessage::ImageFilesError { error } => {
+                self.image_files_loading = LoadingState::Failed(error.clone());
+                error!("Failed to list files: {}", error);
+                self.image_files.clear();
+            }
+            BackgroundMessage::OutputInfoReady { input_path, info } => {
+                if self.selected_input_file.as_ref() == Some(&input_path) {
+                    self.selected_output_info = Some(info);
+                    self.output_info_loading = false;
                 }
             }
+            BackgroundMessage::OutputInfoError { input_path, error } => {
+                if self.selected_input_file.as_ref() == Some(&input_path) {
+                    self.output_info_loading = false;
+                    error!(
+                        "Failed to process image {}: {}",
+                        input_path.display(),
+                        error
+                    );
+                }
+            }
+            BackgroundMessage::ProcessAllComplete {
+                processed_count,
+                error_count,
+                errors,
+            } => self.finish_process_all(processed_count, error_count, &errors),
+            BackgroundMessage::ProcessAllProgress {
+                current,
+                total,
+                current_file: _,
+            } => {
+                self.process_all_progress = Some((current, total));
+            }
+            BackgroundMessage::ImageCacheReady { path, info } => {
+                self.images_loading.remove(&path);
+                self.image_cache.insert(path, info);
+            }
+            BackgroundMessage::ImageCacheError { path } => {
+                self.images_loading.remove(&path);
+            }
+            BackgroundMessage::ProductSearchResult {
+                result,
+                pretty,
+                error,
+                received_at,
+            } => self.handle_product_search_result(result, pretty, error, received_at),
+            BackgroundMessage::ProcessSelectedComplete { success, error } => {
+                self.finish_process_selected(success, error);
+            }
+        }
+    }
+
+    fn finish_process_all(
+        &mut self,
+        processed_count: usize,
+        error_count: usize,
+        errors: &[String],
+    ) {
+        self.process_all_handles = None;
+        self.process_all_running = false;
+        self.process_all_progress = None;
+        self.last_process_result = Some(ProcessRunSummary {
+            processed_count,
+            error_count,
+            errors: errors.to_owned(),
+        });
+        info!(
+            "Processing complete: {} files processed, {} errors",
+            processed_count, error_count
+        );
+        if !errors.is_empty() {
+            error!("Processing errors: {:?}", errors);
+        }
+    }
+
+    fn handle_product_search_result(
+        &mut self,
+        result: Option<SearchResultOk>,
+        pretty: Option<String>,
+        error: Option<String>,
+        received_at: DateTime<Local>,
+    ) {
+        self.product_search_last_response = Some(received_at);
+
+        if let Some(err) = error {
+            error!("Product search failed: {}", err);
+            self.product_search_result_raw = None;
+            self.product_search_result_pretty.clear();
+        } else {
+            self.product_search_result_raw = result;
+            self.product_search_result_pretty = pretty.unwrap_or_default();
+        }
+    }
+
+    fn finish_process_selected(&mut self, success: bool, error: Option<String>) {
+        self.process_all_running = false;
+        self.process_all_progress = None;
+        if success {
+            self.last_process_result = Some(ProcessRunSummary {
+                processed_count: 1,
+                error_count: 0,
+                errors: Vec::new(),
+            });
+            info!("Processed 1 file successfully.");
+        } else {
+            let error = error.unwrap_or_else(|| "Unknown error".to_string());
+            self.last_process_result = Some(ProcessRunSummary {
+                processed_count: 0,
+                error_count: 1,
+                errors: vec![error.clone()],
+            });
+            error!("Failed to process file: {}", error);
         }
     }
 

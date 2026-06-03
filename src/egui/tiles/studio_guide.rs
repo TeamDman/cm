@@ -17,7 +17,6 @@ use eframe::egui;
 use std::path::Path;
 use std::path::PathBuf;
 
-#[expect(clippy::too_many_lines)]
 pub fn draw_studio_guide_tile(ui: &mut egui::Ui, state: &mut AppState) {
     ui.heading("Studio Guide");
     ui.separator();
@@ -81,7 +80,7 @@ fn draw_step_rail(ui: &mut egui::Ui, state: &mut AppState, plan: &plan::CmPlan, 
             } else {
                 egui::RichText::new(label)
             }
-            .color(status_color(&status));
+            .color(status_color(status));
 
             if ui.selectable_label(is_current, text).clicked() {
                 state.studio_step = step;
@@ -205,7 +204,7 @@ fn draw_step(
 
     ui.group(|ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.colored_label(color, status_label(&status));
+            ui.colored_label(color, status_label(status));
             ui.strong(title);
         });
         ui.label(value);
@@ -242,7 +241,7 @@ fn step_status(plan: &plan::CmPlan, step: StudioStep, can_execute: bool) -> Deci
     }
 }
 
-fn status_color(status: &DecisionStatus) -> egui::Color32 {
+fn status_color(status: DecisionStatus) -> egui::Color32 {
     match status {
         DecisionStatus::Waiting => egui::Color32::YELLOW,
         DecisionStatus::Ready => egui::Color32::LIGHT_GREEN,
@@ -255,12 +254,12 @@ fn draw_pick_photos_actions(ui: &mut egui::Ui, state: &mut AppState) {
         if ui.button("Add folder").clicked()
             && let Some(path) = folder_picker::pick_folder()
         {
-            add_input_paths(state, vec![path]);
+            add_input_paths(state, std::slice::from_ref(&path));
         }
         if ui.button("Add file").clicked()
             && let Some(path) = folder_picker::pick_file()
         {
-            add_input_paths(state, vec![path]);
+            add_input_paths(state, std::slice::from_ref(&path));
         }
         if ui.button("Refresh").clicked() {
             state.reload_data();
@@ -299,7 +298,7 @@ fn draw_current_input_paths(ui: &mut egui::Ui, state: &mut AppState) {
             .max_height(160.0)
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for path in state.input_paths.iter().cloned().collect::<Vec<_>>() {
+                for path in state.input_paths.clone() {
                     ui.horizontal_wrapped(|ui| {
                         if ui.small_button("Remove").clicked() {
                             state.path_to_remove = Some(path.clone());
@@ -349,7 +348,7 @@ fn draw_recent_input_paths(ui: &mut egui::Ui, state: &mut AppState) {
                 .on_hover_text(hover_text)
                 .clicked()
             {
-                add_input_paths(state, vec![path]);
+                add_input_paths(state, std::slice::from_ref(&path));
             }
         }
     });
@@ -469,11 +468,12 @@ fn draw_output_shape_actions(ui: &mut egui::Ui, state: &mut AppState) {
             if ui.button("Browse").clicked()
                 && let Some(path) = folder_picker::pick_folder()
             {
-                remember_shared_output_dir(state, path.clone());
+                remember_shared_output_dir(state, &path);
                 state.shared_output_dir = Some(path);
                 output_changed = true;
             }
 
+            let remembered_path = state.shared_output_dir.clone();
             let effective_dir = state.effective_shared_output_dir();
             if ui
                 .add_enabled(
@@ -481,7 +481,7 @@ fn draw_output_shape_actions(ui: &mut egui::Ui, state: &mut AppState) {
                     egui::Button::new("Remember"),
                 )
                 .clicked()
-                && let Some(path) = state.shared_output_dir.clone()
+                && let Some(path) = remembered_path.as_deref()
             {
                 remember_shared_output_dir(state, path);
             }
@@ -492,10 +492,9 @@ fn draw_output_shape_actions(ui: &mut egui::Ui, state: &mut AppState) {
                 )
                 .clicked()
                 && let Some(path) = effective_dir.as_ref()
+                && let Err(e) = std::fs::create_dir_all(path)
             {
-                if let Err(e) = std::fs::create_dir_all(path) {
-                    tracing::error!("Failed to create output folder {}: {}", path.display(), e);
-                }
+                tracing::error!("Failed to create output folder {}: {}", path.display(), e);
             }
             if ui
                 .add_enabled(
@@ -504,10 +503,9 @@ fn draw_output_shape_actions(ui: &mut egui::Ui, state: &mut AppState) {
                 )
                 .clicked()
                 && let Some(path) = effective_dir.as_ref()
+                && path.is_dir()
             {
-                if path.is_dir() {
-                    open_in_explorer(path);
-                }
+                open_in_explorer(path);
             }
         });
 
@@ -566,7 +564,7 @@ fn draw_recent_output_dirs(ui: &mut egui::Ui, state: &mut AppState, output_chang
                 .clicked()
             {
                 state.shared_output_dir = Some(path.clone());
-                remember_shared_output_dir(state, path);
+                remember_shared_output_dir(state, &path);
                 *output_changed = true;
             }
         }
@@ -599,7 +597,7 @@ fn draw_suggested_output_dirs(ui: &mut egui::Ui, state: &mut AppState, output_ch
                 .on_hover_text(hover_text)
                 .clicked()
             {
-                remember_shared_output_dir(state, path.clone());
+                remember_shared_output_dir(state, &path);
                 state.shared_output_dir = Some(path);
                 *output_changed = true;
             }
@@ -662,7 +660,6 @@ fn format_file_size(bytes: u64) -> String {
     }
 }
 
-#[expect(clippy::too_many_lines)]
 fn draw_processing_actions(ui: &mut egui::Ui, state: &mut AppState) {
     let mut selected_preview_changed = false;
 
@@ -941,7 +938,7 @@ fn draw_run_actions(
 
     if state.process_all_running {
         if let Some((current, total)) = state.process_all_progress {
-            ui.add(egui::ProgressBar::new(current as f32 / total.max(1) as f32).show_percentage());
+            ui.add(egui::ProgressBar::new(progress_fraction(current, total)).show_percentage());
             ui.label(format!("Processing {current}/{total}"));
         } else {
             ui.spinner();
@@ -949,6 +946,12 @@ fn draw_run_actions(
     }
 
     draw_latest_process_result(ui, state);
+}
+
+fn progress_fraction(current: usize, total: usize) -> f32 {
+    let denominator = u16::try_from(total.max(1)).unwrap_or(u16::MAX);
+    let numerator = u16::try_from(current.min(total.max(1))).unwrap_or(denominator);
+    f32::from(numerator) / f32::from(denominator)
 }
 
 fn draw_latest_process_result(ui: &mut egui::Ui, state: &AppState) {
@@ -1003,11 +1006,11 @@ fn draw_run_preview(ui: &mut egui::Ui, plan: &plan::CmPlan) {
     });
 }
 
-fn add_input_paths(state: &mut AppState, paths: Vec<PathBuf>) {
-    match inputs::add_paths(&APP_HOME, &paths) {
+fn add_input_paths(state: &mut AppState, paths: &[PathBuf]) {
+    match inputs::add_paths(&APP_HOME, paths) {
         Ok(added) => {
             tracing::info!("Added {} inputs", added.len());
-            remember_input_paths(state, &paths);
+            remember_input_paths(state, paths);
             state.reload_data();
         }
         Err(e) => tracing::error!("Failed to add input paths: {}", e),
@@ -1022,8 +1025,8 @@ fn refresh_selected_paths(state: &mut AppState) {
     }
 }
 
-fn remember_shared_output_dir(state: &mut AppState, path: PathBuf) {
-    match crate::recent_output_dirs::remember(&APP_HOME, &path) {
+fn remember_shared_output_dir(state: &mut AppState, path: &Path) {
+    match crate::recent_output_dirs::remember(&APP_HOME, path) {
         Ok(recent) => state.recent_output_dirs = recent,
         Err(e) => tracing::error!("Failed to remember output folder {}: {}", path.display(), e),
     }
@@ -1050,7 +1053,7 @@ fn decision_status(plan: &plan::CmPlan, name: &str) -> DecisionStatus {
     plan.decisions
         .iter()
         .find(|decision| decision.name == name)
-        .map_or(DecisionStatus::Invalid, |decision| decision.status.clone())
+        .map_or(DecisionStatus::Invalid, |decision| decision.status)
 }
 
 fn merged_status(left: DecisionStatus, right: DecisionStatus) -> DecisionStatus {
@@ -1063,7 +1066,7 @@ fn merged_status(left: DecisionStatus, right: DecisionStatus) -> DecisionStatus 
     }
 }
 
-fn status_label(status: &DecisionStatus) -> &'static str {
+fn status_label(status: DecisionStatus) -> &'static str {
     match status {
         DecisionStatus::Waiting => "waiting",
         DecisionStatus::Ready => "ready",

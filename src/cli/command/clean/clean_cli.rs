@@ -1,15 +1,15 @@
 use crate::cache::CACHE_HOME;
 use crate::cache::clean_cache;
-use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use std::ffi::OsString;
+use facet::Facet;
+use figue::{self as args};
 
 /// Clean cached API responses
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[facet(rename_all = "kebab-case")]
 pub struct CleanArgs {
     /// Show what would be cleaned without actually deleting
-    #[clap(long)]
+    #[facet(args::named, default)]
     pub dry_run: bool,
 }
 
@@ -45,15 +45,5 @@ impl CleanArgs {
         }
 
         Ok(())
-    }
-}
-
-impl ToArgs for CleanArgs {
-    fn to_args(&self) -> Vec<OsString> {
-        let mut rtn = vec![];
-        if self.dry_run {
-            rtn.push(OsString::from("--dry-run"));
-        }
-        rtn
     }
 }

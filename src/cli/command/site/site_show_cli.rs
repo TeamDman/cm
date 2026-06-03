@@ -1,9 +1,8 @@
-use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use std::ffi::OsString;
+use facet::Facet;
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[facet(rename_all = "kebab-case")]
 pub struct SiteShowArgs {}
 
 impl SiteShowArgs {
@@ -14,11 +13,5 @@ impl SiteShowArgs {
         // Use the static SITE_ID for the current value
         println!("Site: {}", crate::SITE_ID.as_str());
         Ok(())
-    }
-}
-
-impl ToArgs for SiteShowArgs {
-    fn to_args(&self) -> Vec<OsString> {
-        Vec::new()
     }
 }

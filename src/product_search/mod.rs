@@ -1,30 +1,30 @@
-use crate::cli::command::search::search_command::OutputFormat;
-use crate::cli::command::search::search_command::SearchArgs;
+mod search_request;
+pub mod search_result_ok;
+
 use facet_pretty::FacetPretty;
+pub use search_request::*;
+pub use search_result_ok::*;
 
 /// Run product search in-process and return the same pretty text used by the CLI.
 ///
-/// This keeps UI shells from spawning `cm search` just to reuse the product
-/// lookup logic.
+/// # Errors
+///
+/// Returns an error string if the Tokio runtime cannot be created or the search request fails.
 pub fn search_pretty(query: &str, sku: &str) -> Result<String, String> {
-    let query = trimmed_optional(query);
-    let sku = trimmed_optional(sku);
+    let request = SearchRequest {
+        query: trimmed_optional(query).map(str::to_string),
+        sku: trimmed_optional(sku).map(str::to_string),
+        no_cache: false,
+    };
 
-    if query.is_none() && sku.is_none() {
+    if request.query.is_none() && request.sku.is_none() {
         return Ok("Enter a query or SKU to search.".to_string());
     }
-
-    let args = SearchArgs {
-        query: query.map(str::to_string),
-        sku: sku.map(str::to_string),
-        no_cache: false,
-        output: OutputFormat::Pretty,
-    };
 
     tokio::runtime::Runtime::new()
         .map_err(|error| format!("Failed to start search runtime: {error}"))?
         .block_on(async move {
-            args.search()
+            request
                 .await
                 .map(|result| format!("{}", result.pretty()))
                 .map_err(|error| format!("Search failed: {error}"))

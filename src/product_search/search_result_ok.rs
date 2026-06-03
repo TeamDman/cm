@@ -39,12 +39,20 @@ pub struct Sorting {
 
 // Result item newtypes
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[facet(transparent)]
+#[repr(transparent)]
 pub struct Uid(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[facet(transparent)]
+#[repr(transparent)]
 pub struct Sku(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[facet(transparent)]
+#[repr(transparent)]
 pub struct Url(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[facet(transparent)]
+#[repr(transparent)]
 pub struct Price(pub String);
 impl Price {
     #[must_use]
@@ -184,14 +192,12 @@ pub struct SearchResultOk {
     pub query: Option<QueryInfo>,
 }
 
-// Minimal test to ensure deserialization works for a very small sample response.
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn deserialize_minimal() {
-        // Note: totalResults is an integer in the actual API
         let raw = r#"{ "results": [{ "uid": "id-1", "name": "Item 1", "price": "9.99" }], "pagination": { "totalResults": 1 } }"#;
         let got: SearchResultOk = facet_json::from_str(raw).expect("should deserialize");
         assert!(got.results.is_some());
@@ -201,7 +207,6 @@ mod tests {
 
     #[test]
     fn deserialize_with_facet_integers() {
-        // Test that integer fields like collapse work correctly
         let raw = r#"{
             "facets": [{
                 "field": "brand",

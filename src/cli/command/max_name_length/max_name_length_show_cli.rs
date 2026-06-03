@@ -1,11 +1,10 @@
 use crate::MaxNameLength;
 use crate::app_home::AppHome;
-use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use std::ffi::OsString;
+use facet::Facet;
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[facet(rename_all = "kebab-case")]
 pub struct MaxNameLengthShowArgs {}
 
 impl MaxNameLengthShowArgs {
@@ -18,11 +17,5 @@ impl MaxNameLengthShowArgs {
             MaxNameLength::load(app_home)?.as_usize()
         );
         Ok(())
-    }
-}
-
-impl ToArgs for MaxNameLengthShowArgs {
-    fn to_args(&self) -> Vec<OsString> {
-        Vec::new()
     }
 }

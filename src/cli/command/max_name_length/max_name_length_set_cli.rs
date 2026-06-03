@@ -1,13 +1,14 @@
 use crate::app_home::AppHome;
-use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use std::ffi::OsString;
+use facet::Facet;
+use figue::{self as args};
 
 /// Set the max name length
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[facet(rename_all = "kebab-case")]
 pub struct MaxNameLengthSetArgs {
     /// Length value to set
+    #[facet(args::positional)]
     pub length: usize,
 }
 
@@ -19,11 +20,5 @@ impl MaxNameLengthSetArgs {
         crate::MaxNameLength::set_to(app_home, self.length)?;
         println!("Setting max name length to: {}", self.length);
         Ok(())
-    }
-}
-
-impl ToArgs for MaxNameLengthSetArgs {
-    fn to_args(&self) -> Vec<OsString> {
-        vec![self.length.to_string().into()]
     }
 }

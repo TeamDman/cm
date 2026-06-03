@@ -1,2 +1,3 @@
-pub mod search_command;
-pub mod search_result_ok;
+mod search_cli;
+
+pub use search_cli::*;

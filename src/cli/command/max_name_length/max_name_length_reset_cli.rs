@@ -1,12 +1,11 @@
 use crate::MaxNameLength;
 use crate::app_home::AppHome;
-use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use std::ffi::OsString;
+use facet::Facet;
 
 /// Reset the max name length to the default value and persist it to the config file
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[facet(rename_all = "kebab-case")]
 pub struct MaxNameLengthResetArgs {}
 
 impl MaxNameLengthResetArgs {
@@ -20,11 +19,5 @@ impl MaxNameLengthResetArgs {
             MaxNameLength::DEFAULT
         );
         Ok(())
-    }
-}
-
-impl ToArgs for MaxNameLengthResetArgs {
-    fn to_args(&self) -> Vec<OsString> {
-        Vec::new()
     }
 }
