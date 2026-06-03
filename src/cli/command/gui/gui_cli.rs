@@ -26,6 +26,9 @@ impl GuiArgs {
     ///
     /// Returns an error if the GUI runtime cannot be created or the GUI fails to run.
     pub fn invoke(self) -> eyre::Result<()> {
+        #[cfg(windows)]
+        crate::windows_cli::console::hide_default_console_or_attach_ctrl_handler()?;
+
         match self.mode {
             GuiMode::MainMenu => crate::egui::run_gui(),
             GuiMode::StudioV1 => {

@@ -190,6 +190,15 @@ impl CmApp {
 impl eframe::App for CmApp {
     #[expect(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(windows)]
+        crate::windows_cli::console::register_gui_context(ctx);
+
+        #[cfg(windows)]
+        if crate::windows_cli::console::take_close_requested() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+
         if self.tool_choice.is_none() {
             draw_main_menu(ctx, &mut self.tool_choice, &mut self.main_menu_status);
             return;

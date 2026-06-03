@@ -856,7 +856,6 @@ dependencies = [
  "reqwest",
  "sha2",
  "teamy-figue",
- "teamy-windows",
  "tempfile",
  "tokio",
  "tracing",
@@ -1035,15 +1034,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -4895,21 +4885,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "teamy-windows"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acdd3da98593c0ec57aab4269c97c135750ed9ffb8432588bc2e0a5035246957"
-dependencies = [
- "crossbeam-channel",
- "dunce",
- "eyre",
- "tracing",
- "uom",
- "widestring",
- "windows 0.62.2",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5340,17 +5315,6 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
-
-[[package]]
-name = "uom"
-version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd5cfe7d84f6774726717f358a37f5bca8fca273bed4de40604ad129d1107b49"
-dependencies = [
- "num-rational",
- "num-traits",
- "typenum",
-]
 
 [[package]]
 name = "ureq"
@@ -5921,12 +5885,6 @@ dependencies = [
  "thiserror 2.0.17",
  "web-sys",
 ]
-
-[[package]]
-name = "widestring"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
 
 [[package]]
 name = "winapi"
