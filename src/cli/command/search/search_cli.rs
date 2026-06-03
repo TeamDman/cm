@@ -3,6 +3,7 @@ use arbitrary::Arbitrary;
 use facet::Facet;
 use facet_pretty::FacetPretty;
 use figue::{self as args};
+use std::io::IsTerminal;
 
 #[derive(Facet, Arbitrary, Clone, PartialEq, Debug, Default)]
 #[facet(rename_all = "kebab-case")]
@@ -47,7 +48,7 @@ impl SearchArgs {
             let result = request.await?;
             match match output {
                 OutputFormat::Auto => {
-                    if atty::is(atty::Stream::Stdout) {
+                    if std::io::stdout().is_terminal() {
                         OutputFormat::Pretty
                     } else {
                         OutputFormat::Json
