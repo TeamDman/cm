@@ -46,7 +46,8 @@ fn open_single_path(path: &Path) -> eyre::Result<()> {
 #[cfg(windows)]
 pub fn launch_gui_mode(mode: &str) -> eyre::Result<u32> {
     use std::os::windows::process::CommandExt;
-    use std::process::{Command, Stdio};
+    use std::process::Command;
+    use std::process::Stdio;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 

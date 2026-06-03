@@ -1,20 +1,31 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::thread;
-
 use eyre::eyre;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::thread;
+#[cfg(windows)]
+use windows::Win32::System::Com::CLSCTX_INPROC_SERVER;
+#[cfg(windows)]
+use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
+#[cfg(windows)]
+use windows::Win32::System::Com::CoCreateInstance;
+#[cfg(windows)]
+use windows::Win32::System::Com::CoInitializeEx;
+#[cfg(windows)]
+use windows::Win32::System::Com::CoUninitialize;
+#[cfg(windows)]
+use windows::Win32::UI::Shell::FOS_ALLOWMULTISELECT;
+#[cfg(windows)]
+use windows::Win32::UI::Shell::FOS_FORCEFILESYSTEM;
+#[cfg(windows)]
+use windows::Win32::UI::Shell::FOS_PICKFOLDERS;
+#[cfg(windows)]
+use windows::Win32::UI::Shell::FileOpenDialog;
+#[cfg(windows)]
+use windows::Win32::UI::Shell::IFileOpenDialog;
+#[cfg(windows)]
+use windows::Win32::UI::Shell::SIGDN_FILESYSPATH;
 use windows_reactor::*;
-
-#[cfg(windows)]
-use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
-    CoUninitialize,
-};
-#[cfg(windows)]
-use windows::Win32::UI::Shell::{
-    FOS_ALLOWMULTISELECT, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, FileOpenDialog, IFileOpenDialog,
-    SIGDN_FILESYSPATH,
-};
 
 const PICK_FILES_LABEL: &str = "Pick files";
 const PICK_FOLDERS_LABEL: &str = "Pick folders";
@@ -199,6 +210,7 @@ struct AppModeProps {
 pub(crate) fn run(initial_surface: InitialSurface) -> eyre::Result<()> {
     App::new()
         .title("CM Reactor Shell")
+        .backdrop(Backdrop::Mica)
         .eager_templated_realization(true)
         .render(move |cx| app(cx, initial_surface.into_mode()))
         .map_err(|error| eyre!("{error}"))
@@ -314,6 +326,7 @@ fn main_menu(props: &AppModeProps, cx: &mut RenderCx) -> Element {
     }
 
     let page: Element = border(vstack(content_children).spacing(32.0))
+        .background(ThemeRef::SolidBackground)
         .padding(page_padding())
         .into();
 
@@ -988,7 +1001,10 @@ fn page_padding() -> Thickness {
 }
 
 fn page_shell(content: impl Into<Element>) -> Element {
-    border(content.into()).padding(page_padding()).into()
+    border(content.into())
+        .background(ThemeRef::SolidBackground)
+        .padding(page_padding())
+        .into()
 }
 
 fn page_header(title: &'static str, description: &'static str) -> Element {
@@ -1117,7 +1133,8 @@ fn pick_folder_paths() -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     #[test]
     fn scan_roots_builds_directory_tree_with_descendants() {
