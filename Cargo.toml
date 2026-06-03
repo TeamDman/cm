@@ -49,6 +49,9 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Co
 egui-toast = "0.19.1"
 # cloud_terrastodon = { version = "0.31.0", features = ["ui-egui"], default-features = false }
 
+[target.'cfg(windows)'.dependencies]
+windows-reactor = { path = "D:/Repos/rust/windows-rs/crates/libs/reactor" }
+
 [dev-dependencies]
 # used by tests
 arbitrary = "1"
@@ -59,6 +62,9 @@ egui_tracing = { path = "G:/Programming/Repos/egui_tracing/egui-tracing"}
 
 [build-dependencies]
 embed-resource = "3.0.6"
+
+[target.'cfg(windows)'.build-dependencies]
+windows-reactor-setup = { path = "D:/Repos/rust/windows-rs/crates/libs/reactor-setup" }
 
 [lints.rust]
 ambiguous_negative_literals = "warn"

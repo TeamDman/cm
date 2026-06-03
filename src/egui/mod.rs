@@ -15,7 +15,6 @@ use behavior::CmBehavior;
 use behavior::CmPane;
 use behavior::create_default_tree;
 use behavior::create_product_search_tree;
-use behavior::create_v2_tree;
 use eframe::egui::Align2;
 use eframe::egui::Color32;
 use eframe::egui::Id;
@@ -40,30 +39,27 @@ use tracing::info;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ToolChoice {
-    V1,
-    V2,
+    Studio,
     ProductSearch,
 }
 
 impl ToolChoice {
     fn label(self) -> &'static str {
         match self {
-            ToolChoice::V1 => "Tool v1",
-            ToolChoice::V2 => "Tool v2",
-            ToolChoice::ProductSearch => "Product Search",
+            ToolChoice::Studio => "egui Studio",
+            ToolChoice::ProductSearch => "egui Product Search",
         }
     }
 
     fn button_label(self) -> &'static str {
         match self {
-            ToolChoice::V1 => "Run Tool v1",
-            ToolChoice::V2 => "Run Tool v2",
-            ToolChoice::ProductSearch => "Product Search",
+            ToolChoice::Studio => "Open egui Studio",
+            ToolChoice::ProductSearch => "Open egui Product Search",
         }
     }
 
     fn uses_studio_layouts(self) -> bool {
-        matches!(self, ToolChoice::V1)
+        matches!(self, ToolChoice::Studio)
     }
 }
 
@@ -207,8 +203,7 @@ impl eframe::App for CmApp {
         // Initialize on first frame
         if !self.state.initialized {
             self.tree = match self.tool_choice.expect("tool choice is selected") {
-                ToolChoice::V1 => create_default_tree(),
-                ToolChoice::V2 => create_v2_tree(),
+                ToolChoice::Studio => create_default_tree(),
                 ToolChoice::ProductSearch => create_product_search_tree(),
             };
             self.state.reload_data();
@@ -495,15 +490,28 @@ fn draw_main_menu(
             ui.add_space((ui.available_height() * 0.3).min(160.0));
             ui.heading("CM");
             ui.add_space(24.0);
+            ui.label("egui main menu");
+            ui.add_space(12.0);
 
             ui.spacing_mut().item_spacing.y = 12.0;
-            for choice in [ToolChoice::V1, ToolChoice::V2, ToolChoice::ProductSearch] {
+            for choice in [ToolChoice::Studio, ToolChoice::ProductSearch] {
                 let button =
                     egui::Button::new(choice.button_label()).min_size(egui::vec2(240.0, 44.0));
                 if ui.add(button).clicked() {
                     *tool_choice = Some(choice);
                     *main_menu_status = None;
                     info!("Selected {}", choice.label());
+                }
+            }
+
+            for (label, mode) in [
+                ("Open Reactor Studio", "reactor-studio"),
+                ("Open Reactor Product Search", "reactor-product-search"),
+            ] {
+                let button = egui::Button::new(label).min_size(egui::vec2(240.0, 44.0));
+                if ui.add(button).clicked() {
+                    *main_menu_status = Some(launch_gui_mode_status(mode));
+                    info!("Requested external gui mode {mode}");
                 }
             }
 
@@ -515,20 +523,30 @@ fn draw_main_menu(
     });
 }
 
+fn launch_gui_mode_status(mode: &str) -> String {
+    match crate::windows_cli::shell::launch_gui_mode(mode) {
+        Ok(pid) => format!("Launched cm gui --mode {mode} as process {pid}."),
+        Err(error) => format!("Failed to launch cm gui --mode {mode}: {error}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ToolChoice;
 
     #[test]
     fn product_search_is_a_main_menu_utility_not_a_studio_layout() {
-        assert_eq!(ToolChoice::ProductSearch.button_label(), "Product Search");
-        assert_eq!(ToolChoice::ProductSearch.label(), "Product Search");
+        assert_eq!(
+            ToolChoice::ProductSearch.button_label(),
+            "Open egui Product Search"
+        );
+        assert_eq!(ToolChoice::ProductSearch.label(), "egui Product Search");
         assert!(!ToolChoice::ProductSearch.uses_studio_layouts());
     }
 
     #[test]
-    fn only_v1_uses_egui_studio_layouts() {
-        assert!(ToolChoice::V1.uses_studio_layouts());
-        assert!(!ToolChoice::V2.uses_studio_layouts());
+    fn only_studio_uses_egui_studio_layouts() {
+        assert!(ToolChoice::Studio.uses_studio_layouts());
+        assert!(!ToolChoice::ProductSearch.uses_studio_layouts());
     }
 }

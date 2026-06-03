@@ -7,10 +7,12 @@ use figue::{self as args};
 #[repr(u8)]
 pub enum GuiMode {
     #[default]
-    MainMenu,
-    StudioV1,
-    StudioV2,
-    ProductSearch,
+    ReactorMainMenu,
+    EguiMainMenu,
+    EguiStudio,
+    ReactorStudio,
+    EguiProductSearch,
+    ReactorProductSearch,
 }
 
 #[derive(Facet, Arbitrary, Clone, PartialEq, Debug, Default)]
@@ -30,14 +32,16 @@ impl GuiArgs {
         crate::windows_cli::console::hide_default_console_or_attach_ctrl_handler()?;
 
         match self.mode {
-            GuiMode::MainMenu => crate::egui::run_gui(),
-            GuiMode::StudioV1 => {
-                crate::egui::run_gui_with_initial_tool(Some(crate::egui::ToolChoice::V1))
+            GuiMode::ReactorMainMenu => crate::reactor::run_main_menu(),
+            GuiMode::EguiMainMenu => crate::egui::run_gui(),
+            GuiMode::EguiStudio => {
+                crate::egui::run_gui_with_initial_tool(Some(crate::egui::ToolChoice::Studio))
             }
-            GuiMode::StudioV2 => crate::reactor::run_studio_v2(),
-            GuiMode::ProductSearch => {
+            GuiMode::ReactorStudio => crate::reactor::run_studio(),
+            GuiMode::EguiProductSearch => {
                 crate::egui::run_gui_with_initial_tool(Some(crate::egui::ToolChoice::ProductSearch))
             }
+            GuiMode::ReactorProductSearch => crate::reactor::run_product_search(),
         }
     }
 }
@@ -49,12 +53,15 @@ mod tests {
     use std::ffi::OsString;
 
     #[test]
-    fn gui_mode_to_args_skips_default_main_menu() {
+    fn gui_default_mode_serializes_to_reactor_main_menu() {
         assert_eq!(
             GuiArgs::default()
                 .to_args()
                 .expect("gui args should serialize"),
-            vec![OsString::from("--mode"), OsString::from("main-menu")]
+            vec![
+                OsString::from("--mode"),
+                OsString::from("reactor-main-menu")
+            ]
         );
     }
 
@@ -62,11 +69,14 @@ mod tests {
     fn gui_mode_to_args_includes_direct_surface() {
         assert_eq!(
             GuiArgs {
-                mode: GuiMode::ProductSearch,
+                mode: GuiMode::EguiProductSearch,
             }
             .to_args()
             .expect("gui args should serialize"),
-            vec![OsString::from("--mode"), OsString::from("product-search")]
+            vec![
+                OsString::from("--mode"),
+                OsString::from("egui-product-search")
+            ]
         );
     }
 }

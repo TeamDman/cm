@@ -32,9 +32,9 @@ pub enum CmPane {
     ImageDescription,
     /// Product Search (Searchspring)
     ProductSearch,
-    /// V2 plan builder summary
+    /// Guided plan builder summary
     Plan,
-    /// V2 mom-friendly guided workflow
+    /// Guided workflow
     StudioGuide,
 }
 
@@ -179,11 +179,6 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     create_tree(false)
 }
 
-/// Create the v2 tile tree layout with a plan pane.
-pub fn create_v2_tree() -> egui_tiles::Tree<CmPane> {
-    create_tree(true)
-}
-
 /// Create a standalone product-search layout outside the studios.
 pub fn create_product_search_tree() -> egui_tiles::Tree<CmPane> {
     let mut tiles = egui_tiles::Tiles::default();
@@ -272,17 +267,6 @@ mod tests {
         let panes = pane_keys(&create_default_tree());
 
         assert_eq!(panes, BTreeSet::from(CORE_STUDIO_PANES));
-    }
-
-    #[test]
-    fn v2_studio_extends_v1_with_guide_and_plan_only() {
-        let mut expected = BTreeSet::from(CORE_STUDIO_PANES);
-        expected.insert("Plan");
-        expected.insert("StudioGuide");
-
-        let panes = pane_keys(&create_v2_tree());
-
-        assert_eq!(panes, expected);
     }
 
     #[test]
