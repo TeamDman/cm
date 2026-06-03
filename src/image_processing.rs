@@ -1,6 +1,6 @@
 //! Image processing utilities for the CM application
 
-use crate::gui::state::CachedImageInfo;
+use crate::egui::state::CachedImageInfo;
 use eyre::Result;
 use eyre::eyre;
 use image::DynamicImage;

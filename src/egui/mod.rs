@@ -3,20 +3,19 @@
 mod behavior;
 mod folder_picker;
 mod layouts;
-mod plan;
-mod reactor_shell;
 pub mod state;
 mod tiles;
 pub mod tree_view;
 
 use crate::app_home::APP_HOME;
-use crate::gui::layouts::Layout;
-use crate::gui::layouts::LayoutManager;
+use crate::egui::layouts::Layout;
+use crate::egui::layouts::LayoutManager;
 use crate::inputs;
 use behavior::CmBehavior;
 use behavior::CmPane;
 use behavior::create_default_tree;
 use behavior::create_product_search_tree;
+use behavior::create_v2_tree;
 use eframe::egui::Align2;
 use eframe::egui::Color32;
 use eframe::egui::Id;
@@ -30,7 +29,6 @@ use egui_toast::ToastKind;
 use egui_toast::ToastOptions;
 use egui_toast::Toasts;
 use eyre::eyre;
-use reactor_shell::ReactorShellMode;
 use state::AppState;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -67,14 +65,6 @@ impl ToolChoice {
     fn uses_studio_layouts(self) -> bool {
         matches!(self, ToolChoice::V1)
     }
-}
-
-pub(crate) fn run_reactor_shell_main_menu() -> eyre::Result<()> {
-    reactor_shell::run_blocking(ReactorShellMode::MainMenu)
-}
-
-pub(crate) fn run_reactor_shell_studio_v2() -> eyre::Result<()> {
-    reactor_shell::run_blocking(ReactorShellMode::StudioV2)
 }
 
 /// Run the GUI; the function blocks in place on the eframe app using
@@ -209,13 +199,7 @@ impl eframe::App for CmApp {
         if !self.state.initialized {
             self.tree = match self.tool_choice.expect("tool choice is selected") {
                 ToolChoice::V1 => create_default_tree(),
-                ToolChoice::V2 => {
-                    if let Err(error) = reactor_shell::spawn_detached(ReactorShellMode::StudioV2) {
-                        error!("Failed to launch Studio v2 Reactor shell: {error}");
-                    }
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    return;
-                }
+                ToolChoice::V2 => create_v2_tree(),
                 ToolChoice::ProductSearch => create_product_search_tree(),
             };
             self.state.reload_data();
@@ -508,22 +492,9 @@ fn draw_main_menu(
                 let button =
                     egui::Button::new(choice.button_label()).min_size(egui::vec2(240.0, 44.0));
                 if ui.add(button).clicked() {
-                    if choice == ToolChoice::V2 {
-                        match reactor_shell::spawn_detached(ReactorShellMode::StudioV2) {
-                            Ok(()) => {
-                                info!("Launched Studio v2 Reactor shell");
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                            }
-                            Err(error) => {
-                                error!("Failed to launch Studio v2 Reactor shell: {error}");
-                                *main_menu_status =
-                                    Some(format!("Failed to launch Studio v2: {error}"));
-                            }
-                        }
-                    } else {
-                        *tool_choice = Some(choice);
-                        info!("Selected {}", choice.label());
-                    }
+                    *tool_choice = Some(choice);
+                    *main_menu_status = None;
+                    info!("Selected {}", choice.label());
                 }
             }
 

@@ -1,7 +1,7 @@
 //! Tile behavior and pane definitions for `egui_tiles`
 
-use crate::gui::state::AppState;
-use crate::gui::tiles;
+use crate::egui::state::AppState;
+use crate::egui::tiles;
 use eframe::egui::TextureHandle;
 use eframe::egui::{self};
 use std::collections::HashMap;
@@ -180,7 +180,6 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
 }
 
 /// Create the v2 tile tree layout with a plan pane.
-#[cfg(test)]
 pub fn create_v2_tree() -> egui_tiles::Tree<CmPane> {
     create_tree(true)
 }

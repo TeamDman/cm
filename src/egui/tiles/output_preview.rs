@@ -1,10 +1,10 @@
 //! Output preview tile - shows renamed files with status colors
 
-use crate::gui::folder_picker;
-use crate::gui::state::AppState;
-use crate::gui::tree_view::group_files_with_renames_and_options;
-use crate::gui::tree_view::open_in_explorer;
-use crate::gui::tree_view::show_rename_group_with_output_path;
+use crate::egui::folder_picker;
+use crate::egui::state::AppState;
+use crate::egui::tree_view::group_files_with_renames_and_options;
+use crate::egui::tree_view::open_in_explorer;
+use crate::egui::tree_view::show_rename_group_with_output_path;
 use crate::image_processing::get_output_dir;
 use eframe::egui::Color32;
 use eframe::egui::ScrollArea;

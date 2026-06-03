@@ -1,9 +1,9 @@
 //! Image preview tile - shows input or output image preview
 
-use crate::gui::state::AppState;
-use crate::gui::tiles::pan_zoom::PanZoomState;
-use crate::gui::tiles::pan_zoom::draw_pan_zoom_image;
-use crate::gui::tiles::pan_zoom::draw_pan_zoom_image_uri;
+use crate::egui::state::AppState;
+use crate::egui::tiles::pan_zoom::PanZoomState;
+use crate::egui::tiles::pan_zoom::draw_pan_zoom_image;
+use crate::egui::tiles::pan_zoom::draw_pan_zoom_image_uri;
 use eframe::egui::TextureHandle;
 use eframe::egui::TextureOptions;
 use eframe::egui::{self};

@@ -4,7 +4,7 @@ use crate::MAX_NAME_LENGTH;
 use crate::MaxNameLength;
 use crate::MaxNameLengthEnforced;
 use crate::app_home::APP_HOME;
-use crate::gui::state::AppState;
+use crate::egui::state::AppState;
 use eframe::egui;
 use std::sync::atomic::Ordering;
 use tracing::error;

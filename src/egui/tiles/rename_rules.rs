@@ -1,7 +1,7 @@
 //! Rename rules tile - shows and manages rename rules
 
 use crate::app_home::APP_HOME;
-use crate::gui::state::AppState;
+use crate::egui::state::AppState;
 use eframe::egui::ScrollArea;
 use eframe::egui::{self};
 

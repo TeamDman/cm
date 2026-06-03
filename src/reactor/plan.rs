@@ -1,7 +1,7 @@
-//! Inspectable v2 plan model for the CM GUI.
+//! Inspectable v2 Reactor plan model shared with the egui shell.
 
 use crate::app_home::AppHome;
-use crate::gui::state::AppState;
+use crate::egui::state::AppState;
 use crate::image_processing;
 use crate::image_processing::OutputPathOptions;
 use facet::Facet;

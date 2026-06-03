@@ -1,6 +1,6 @@
 //! Tree view helper functions for displaying file hierarchies
 
-use crate::gui::state::CachedImageInfo;
+use crate::egui::state::CachedImageInfo;
 use crate::image_processing::OutputPathOptions;
 use crate::image_processing::get_shared_input_base;
 use eframe::egui::Color32;

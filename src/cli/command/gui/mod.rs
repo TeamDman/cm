@@ -37,13 +37,13 @@ impl GuiArgs {
     /// Returns an error if the GUI runtime cannot be created or the GUI fails to run.
     pub fn invoke(self) -> eyre::Result<()> {
         match self.mode {
-            GuiMode::MainMenu => crate::gui::run_reactor_shell_main_menu(),
+            GuiMode::MainMenu => crate::egui::run_gui(),
             GuiMode::StudioV1 => {
-                crate::gui::run_gui_with_initial_tool(Some(crate::gui::ToolChoice::V1))
+                crate::egui::run_gui_with_initial_tool(Some(crate::egui::ToolChoice::V1))
             }
-            GuiMode::StudioV2 => crate::gui::run_reactor_shell_studio_v2(),
+            GuiMode::StudioV2 => crate::reactor::run_studio_v2(),
             GuiMode::ProductSearch => {
-                crate::gui::run_gui_with_initial_tool(Some(crate::gui::ToolChoice::ProductSearch))
+                crate::egui::run_gui_with_initial_tool(Some(crate::egui::ToolChoice::ProductSearch))
             }
         }
     }

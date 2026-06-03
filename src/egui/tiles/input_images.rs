@@ -1,10 +1,10 @@
 //! Input images tree tile - shows discovered image files
 
-use crate::gui::state::AppState;
-use crate::gui::state::LoadingState;
-use crate::gui::tree_view::TreeRenderContext;
-use crate::gui::tree_view::group_files_by_input;
-use crate::gui::tree_view::show_input_group_with_cache;
+use crate::egui::state::AppState;
+use crate::egui::state::LoadingState;
+use crate::egui::tree_view::TreeRenderContext;
+use crate::egui::tree_view::group_files_by_input;
+use crate::egui::tree_view::show_input_group_with_cache;
 use eframe::egui::ScrollArea;
 use eframe::egui::TextureHandle;
 use eframe::egui::{self};

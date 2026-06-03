@@ -3,11 +3,12 @@
 pub mod app_home;
 pub mod cache;
 pub mod cli;
-pub mod gui;
+pub mod egui;
 pub mod image_processing;
 pub mod inputs;
 pub mod max_name_length;
 pub mod product_search;
+pub mod reactor;
 pub mod recent_input_paths;
 pub mod recent_output_dirs;
 pub mod rename_rules;

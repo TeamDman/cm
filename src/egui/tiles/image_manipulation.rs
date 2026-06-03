@@ -1,6 +1,6 @@
 //! Image manipulation settings tile
 
-use crate::gui::state::AppState;
+use crate::egui::state::AppState;
 use crate::image_processing::BinarizationMode;
 use crate::image_processing::DEFAULT_MAX_FILE_SIZE_BYTES;
 use eframe::egui;

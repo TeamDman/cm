@@ -1,9 +1,9 @@
 //! V2 plan tile.
 
 use crate::app_home::APP_HOME;
-use crate::gui::plan;
-use crate::gui::plan::DecisionStatus;
-use crate::gui::state::AppState;
+use crate::egui::state::AppState;
+use crate::reactor::plan;
+use crate::reactor::plan::DecisionStatus;
 use eframe::egui;
 
 pub fn draw_plan_tile(ui: &mut egui::Ui, state: &mut AppState) {

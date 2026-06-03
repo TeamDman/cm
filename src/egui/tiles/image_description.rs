@@ -1,6 +1,6 @@
 //! Image description tile - shows EXIF metadata of the selected image
 
-use crate::gui::state::AppState;
+use crate::egui::state::AppState;
 use eframe::egui::ScrollArea;
 use eframe::egui::{self};
 use exif::In;

@@ -1,7 +1,7 @@
 use crate::cli::command::search::search_command::OutputFormat;
 use crate::cli::command::search::search_command::SearchArgs;
-use crate::gui::state::AppState;
-use crate::gui::state::BackgroundMessage;
+use crate::egui::state::AppState;
+use crate::egui::state::BackgroundMessage;
 use chrono::Local;
 use eframe::egui::Button;
 use eframe::egui::RichText;

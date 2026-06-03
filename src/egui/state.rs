@@ -903,7 +903,7 @@ impl AppState {
                 if auto_search_on_process {
                     // Get the filename for search suggestion
                     if let Some(filename) = input_path.file_name().and_then(|s| s.to_str()) {
-                        use crate::gui::tiles::suggest_search;
+                        use crate::egui::tiles::suggest_search;
                         let suggestion = suggest_search(filename);
 
                         // Check if we should perform the search
@@ -1122,7 +1122,7 @@ impl AppState {
             if auto_search_on_process {
                 // Get the filename for search suggestion
                 if let Some(filename) = selected_input.file_name().and_then(|s| s.to_str()) {
-                    use crate::gui::tiles::suggest_search;
+                    use crate::egui::tiles::suggest_search;
                     let suggestion = suggest_search(filename);
 
                     // Check if we should perform the search

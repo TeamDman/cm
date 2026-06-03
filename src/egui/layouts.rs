@@ -1,5 +1,5 @@
 use crate::app_home::APP_HOME;
-use crate::gui::behavior::CmPane;
+use crate::egui::behavior::CmPane;
 use eframe::egui::Id;
 use egui_tiles::Tree;
 use facet::Facet;

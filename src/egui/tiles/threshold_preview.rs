@@ -1,8 +1,8 @@
 //! Threshold preview tile - shows binarized image with crop bounding box
 
-use crate::gui::state::AppState;
-use crate::gui::tiles::pan_zoom::PanZoomState;
-use crate::gui::tiles::pan_zoom::draw_pan_zoom_image;
+use crate::egui::state::AppState;
+use crate::egui::tiles::pan_zoom::PanZoomState;
+use crate::egui::tiles::pan_zoom::draw_pan_zoom_image;
 use eframe::egui::TextureHandle;
 use eframe::egui::TextureOptions;
 use eframe::egui::{self};

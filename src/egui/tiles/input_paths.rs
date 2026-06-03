@@ -1,6 +1,6 @@
 //! Input paths tile - shows and manages input directories
 
-use crate::gui::state::AppState;
+use crate::egui::state::AppState;
 use eframe::egui::ScrollArea;
 use eframe::egui::{self};
 
