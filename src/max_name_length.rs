@@ -72,6 +72,7 @@ impl MaxNameLength {
     /// # Errors
     ///
     /// This function does not return any errors.
+    #[must_use]
     pub fn config_file_path(app_home: &AppHome) -> PathBuf {
         app_home.file_path(Self::FILE_NAME)
     }

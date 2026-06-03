@@ -1,10 +1,11 @@
 //! Output preview tile - shows renamed files with status colors
 
+use crate::gui::folder_picker;
 use crate::gui::state::AppState;
 use crate::gui::tree_view::group_files_with_renames_and_options;
+use crate::gui::tree_view::open_in_explorer;
 use crate::gui::tree_view::show_rename_group_with_output_path;
 use crate::image_processing::get_output_dir;
-use crate::image_processing::get_shared_output_dir;
 use eframe::egui::Color32;
 use eframe::egui::ScrollArea;
 use eframe::egui::{self};
@@ -61,6 +62,8 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         ui.separator();
     }
 
+    draw_shared_output_folder_controls(ui, state);
+
     if state.image_files.is_empty() {
         ui.label("(no image files to preview)");
         return;
@@ -87,12 +90,9 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
         &state.image_files,
         &state.renamed_files,
         state.max_name_length,
-        output_path_options,
+        &output_path_options,
     );
-    let shared_output_dir = output_path_options
-        .save_all_inputs_to_same_folder
-        .then(|| get_shared_output_dir(&state.input_paths))
-        .flatten();
+    let shared_output_dir = output_path_options.shared_output_dir.clone();
 
     ScrollArea::both()
         .id_salt("output_preview_scroll")
@@ -116,4 +116,62 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
                 }
             }
         });
+}
+
+fn draw_shared_output_folder_controls(ui: &mut egui::Ui, state: &mut AppState) {
+    if !state.save_all_inputs_to_same_folder {
+        return;
+    }
+
+    ui.separator();
+    ui.horizontal(|ui| {
+        ui.label("Output folder:");
+
+        let effective_dir = state.effective_shared_output_dir();
+        let mut path_text = effective_dir
+            .as_ref()
+            .map_or_else(String::new, |path| path.display().to_string());
+
+        let text_response = ui.add_sized(
+            [ui.available_width().max(240.0) - 160.0, 20.0],
+            egui::TextEdit::singleline(&mut path_text),
+        );
+        if text_response.changed() {
+            let trimmed = path_text.trim();
+            state.shared_output_dir = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.into())
+            };
+        }
+    });
+
+    ui.horizontal(|ui| {
+        if state.shared_output_dir.is_none() {
+            ui.label("Using default");
+        } else if ui.button("Use Default").clicked() {
+            state.shared_output_dir = None;
+        }
+
+        if ui.button("Browse").clicked()
+            && let Some(path) = folder_picker::pick_folder()
+        {
+            state.shared_output_dir = Some(path);
+        }
+
+        let effective_dir = state.effective_shared_output_dir();
+        let can_open = effective_dir.is_some();
+        if ui
+            .add_enabled(can_open, egui::Button::new("Open"))
+            .clicked()
+            && let Some(path) = effective_dir
+        {
+            if let Err(e) = std::fs::create_dir_all(&path) {
+                tracing::error!("Failed to create output folder {}: {}", path.display(), e);
+            } else {
+                open_in_explorer(&path);
+            }
+        }
+    });
+    ui.separator();
 }

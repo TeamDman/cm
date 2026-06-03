@@ -1,6 +1,7 @@
 //! CM GUI using `egui_tiles` for layout management
 
 mod behavior;
+mod folder_picker;
 mod layouts;
 pub mod state;
 mod tiles;

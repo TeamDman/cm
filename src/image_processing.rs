@@ -92,12 +92,14 @@ impl Default for ProcessingSettings {
 }
 
 /// Output path planning options.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct OutputPathOptions {
     /// Put all output files directly in the output root.
     pub flatten_output_hierarchy: bool,
     /// Use one shared output root for all input roots.
     pub save_all_inputs_to_same_folder: bool,
+    /// Explicit shared output root selected by the user.
+    pub shared_output_dir: Option<PathBuf>,
 }
 
 /// Detect the image format from the file extension
@@ -927,7 +929,7 @@ pub fn get_output_path(
         input_root,
         renamed_filename,
         &input_roots,
-        OutputPathOptions::default(),
+        &OutputPathOptions::default(),
     )
 }
 
@@ -938,7 +940,7 @@ pub fn get_output_path_with_options(
     input_root: &Path,
     renamed_filename: &str,
     input_roots: &[PathBuf],
-    options: OutputPathOptions,
+    options: &OutputPathOptions,
 ) -> Option<PathBuf> {
     // Get relative path from input root or the shared parent.
     let relative_root = if options.save_all_inputs_to_same_folder {
@@ -950,7 +952,10 @@ pub fn get_output_path_with_options(
 
     // Get output root directory
     let output_root = if options.save_all_inputs_to_same_folder {
-        get_shared_output_dir(input_roots)?
+        options
+            .shared_output_dir
+            .clone()
+            .or_else(|| get_shared_output_dir(input_roots))?
     } else {
         get_output_dir(input_root)
     };
@@ -1197,9 +1202,10 @@ mod tests {
             &root_a,
             "renamed.jpg",
             &roots,
-            OutputPathOptions {
+            &OutputPathOptions {
                 flatten_output_hierarchy: false,
                 save_all_inputs_to_same_folder: true,
+                shared_output_dir: None,
             },
         )
         .expect("output path");
@@ -1233,14 +1239,41 @@ mod tests {
             &root,
             "renamed.jpg",
             std::slice::from_ref(&root),
-            OutputPathOptions {
+            &OutputPathOptions {
                 flatten_output_hierarchy: true,
                 save_all_inputs_to_same_folder: false,
+                shared_output_dir: None,
             },
         )
         .expect("output path");
 
         assert_eq!(output, dir.path().join("input-output").join("renamed.jpg"));
+        Ok(())
+    }
+
+    #[test]
+    fn custom_shared_output_dir_is_used() -> Result<()> {
+        let dir = tempdir()?;
+        let root = dir.path().join("input");
+        let custom_output = dir.path().join("Mom Renamed These");
+        fs::create_dir_all(root.join("nested"))?;
+        let file = root.join("nested").join("photo.jpg");
+        fs::write(&file, b"data")?;
+
+        let output = get_output_path_with_options(
+            &file,
+            &root,
+            "renamed.jpg",
+            std::slice::from_ref(&root),
+            &OutputPathOptions {
+                flatten_output_hierarchy: false,
+                save_all_inputs_to_same_folder: true,
+                shared_output_dir: Some(custom_output.clone()),
+            },
+        )
+        .expect("output path");
+
+        assert_eq!(output, custom_output.join("nested").join("renamed.jpg"));
         Ok(())
     }
 

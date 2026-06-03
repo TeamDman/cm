@@ -120,6 +120,8 @@ pub struct AppState {
     pub flatten_output_hierarchy: bool,
     /// Whether all input roots should write into one shared output folder
     pub save_all_inputs_to_same_folder: bool,
+    /// User-selected shared output folder, when saving all inputs together
+    pub shared_output_dir: Option<PathBuf>,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Whether output info is being calculated in the background
@@ -260,6 +262,7 @@ impl Default for AppState {
             max_file_size_bytes: None,
             flatten_output_hierarchy: false,
             save_all_inputs_to_same_folder: false,
+            shared_output_dir: None,
             selected_output_info: None,
             output_info_loading: false,
             process_all_running: false,
@@ -572,7 +575,7 @@ impl AppState {
                     input_root,
                     &renamed_name,
                     &self.input_paths,
-                    options,
+                    &options,
                 ) {
                     self.output_preview_path = Some(output_path);
                 }
@@ -696,6 +699,7 @@ impl AppState {
             let renamed_opt = renamed_files.get(idx).cloned();
             let input_paths_clone = input_paths.clone();
             let reserved_output_paths = reserved_output_paths.clone();
+            let output_path_options = output_path_options.clone();
             let base_settings = base_settings.clone();
             let sender = sender.clone();
             let processed_count = processed_count.clone();
@@ -750,7 +754,7 @@ impl AppState {
                     &input_root.clone().unwrap(),
                     &renamed_name,
                     &input_paths_clone,
-                    output_path_options,
+                    &output_path_options,
                 ) else {
                     errors.lock().unwrap().push(format!(
                         "Could not calculate output path for {}",
@@ -1056,7 +1060,7 @@ impl AppState {
                     &input_root,
                     &renamed_name,
                     &input_paths,
-                    output_path_options,
+                    &output_path_options,
                 ) else {
                     return Err(eyre::eyre!("Could not calculate output path"));
                 };
@@ -1219,7 +1223,23 @@ impl AppState {
         OutputPathOptions {
             flatten_output_hierarchy: self.flatten_output_hierarchy,
             save_all_inputs_to_same_folder: self.save_all_inputs_to_same_folder,
+            shared_output_dir: self
+                .save_all_inputs_to_same_folder
+                .then(|| self.effective_shared_output_dir())
+                .flatten(),
         }
+    }
+
+    #[must_use]
+    pub(crate) fn default_shared_output_dir(&self) -> Option<PathBuf> {
+        image_processing::get_shared_output_dir(&self.input_paths)
+    }
+
+    #[must_use]
+    pub(crate) fn effective_shared_output_dir(&self) -> Option<PathBuf> {
+        self.shared_output_dir
+            .clone()
+            .or_else(|| self.default_shared_output_dir())
     }
 }
 

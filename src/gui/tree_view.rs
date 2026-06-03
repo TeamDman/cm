@@ -304,7 +304,7 @@ fn format_size(bytes: u64) -> String {
 }
 
 /// Reveal `path` in the host file manager (Explorer/Finder/xdg-open).
-fn open_in_explorer(path: &Path) {
+pub(crate) fn open_in_explorer(path: &Path) {
     debug!("Opening in explorer: {}", path.display());
 
     #[cfg(windows)]
@@ -426,7 +426,7 @@ pub fn group_files_with_renames(
         original_files,
         renamed_files,
         max_name_length,
-        OutputPathOptions::default(),
+        &OutputPathOptions::default(),
     )
 }
 
@@ -437,13 +437,56 @@ pub fn group_files_with_renames_and_options(
     original_files: &[PathBuf],
     renamed_files: &[PathBuf],
     max_name_length: usize,
-    options: OutputPathOptions,
+    options: &OutputPathOptions,
 ) -> Vec<(PathBuf, Vec<FileRenameInfo>)> {
     let mut result: Vec<(PathBuf, Vec<FileRenameInfo>)> = Vec::new();
     let shared_input_base = options
         .save_all_inputs_to_same_folder
         .then(|| get_shared_input_base(input_paths))
         .flatten();
+
+    if options.save_all_inputs_to_same_folder {
+        let Some(shared_input_base) = shared_input_base else {
+            return result;
+        };
+
+        let mut files_info = Vec::new();
+        for (original, renamed) in original_files.iter().zip(renamed_files.iter()) {
+            let Ok(original_relative) = original.strip_prefix(&shared_input_base) else {
+                continue;
+            };
+
+            let renamed_name = renamed.file_name().unwrap_or_default();
+            let new_relative = if options.flatten_output_hierarchy {
+                PathBuf::from(renamed_name)
+            } else if let Some(parent) = original_relative.parent() {
+                parent.join(renamed_name)
+            } else {
+                PathBuf::from(renamed_name)
+            };
+            let orig_name = original.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            let new_name = new_relative
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let was_renamed = orig_name != new_name;
+            let is_too_long = new_name.len() > max_name_length;
+
+            files_info.push(FileRenameInfo {
+                original_input_path: original.clone(),
+                new_path: new_relative,
+                was_renamed,
+                is_too_long,
+            });
+        }
+
+        if !files_info.is_empty() {
+            files_info.sort_by(|a, b| a.new_path.cmp(&b.new_path));
+            result.push((shared_input_base, files_info));
+        }
+
+        return result;
+    }
 
     for input_path in input_paths {
         let mut files_info = Vec::new();
@@ -730,4 +773,38 @@ pub fn show_rename_group_with_output_path(
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_output_grouping_combines_multiple_inputs() {
+        let root = PathBuf::from("C:/photos");
+        let input_a = root.join("a");
+        let input_b = root.join("b");
+        let original_files = vec![input_a.join("one.jpg"), input_b.join("two.jpg")];
+        let renamed_files = vec![
+            input_a.join("one-renamed.jpg"),
+            input_b.join("two-renamed.jpg"),
+        ];
+
+        let grouped = group_files_with_renames_and_options(
+            &[input_a, input_b],
+            &original_files,
+            &renamed_files,
+            50,
+            &OutputPathOptions {
+                flatten_output_hierarchy: false,
+                save_all_inputs_to_same_folder: true,
+                shared_output_dir: Some(root.join("output")),
+            },
+        );
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].1.len(), 2);
+        assert_eq!(grouped[0].1[0].new_path, PathBuf::from("a/one-renamed.jpg"));
+        assert_eq!(grouped[0].1[1].new_path, PathBuf::from("b/two-renamed.jpg"));
+    }
 }
