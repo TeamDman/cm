@@ -25,6 +25,10 @@ use windows::Win32::UI::Shell::FileOpenDialog;
 use windows::Win32::UI::Shell::IFileOpenDialog;
 #[cfg(windows)]
 use windows::Win32::UI::Shell::SIGDN_FILESYSPATH;
+#[expect(
+    clippy::wildcard_imports,
+    reason = "reactor UI DSL is built around a broad prelude"
+)]
 use windows_reactor::*;
 
 const PICK_FILES_LABEL: &str = "Pick files";
@@ -217,6 +221,12 @@ pub(crate) fn run(initial_surface: InitialSurface) -> eyre::Result<()> {
 }
 
 fn app(cx: &mut RenderCx, initial_mode: AppMode) -> Element {
+    crate::windows_cli::console::register_reactor_marshaller(&cx.use_ui_marshaller());
+
+    if crate::windows_cli::console::take_close_requested() {
+        close_active_reactor_window();
+    }
+
     let (mode, set_mode) = cx.use_state(initial_mode);
     let props = AppModeProps { set_mode };
 
@@ -226,6 +236,14 @@ fn app(cx: &mut RenderCx, initial_mode: AppMode) -> Element {
         AppMode::ProductSearch => component(product_search, props),
     }
 }
+
+#[cfg(windows)]
+fn close_active_reactor_window() {
+    close_root_window();
+}
+
+#[cfg(not(windows))]
+fn close_active_reactor_window() {}
 
 fn main_menu(props: &AppModeProps, cx: &mut RenderCx) -> Element {
     set_window_file_drop_handler(None);
@@ -444,6 +462,10 @@ fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         .into()
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "UI layout is easier to maintain as one builder function"
+)]
 fn product_search(props: &AppModeProps, cx: &mut RenderCx) -> Element {
     set_window_file_drop_handler(None);
     let is_dark = matches!(cx.use_color_scheme(), ColorScheme::Dark);
@@ -559,6 +581,14 @@ fn product_search(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         .into()
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "wizard input step is a single UI builder slice"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "state handles are cloned into event callbacks"
+)]
 fn input_paths_step(
     wizard: StudioState,
     set_wizard: SetState<StudioState>,
@@ -804,6 +834,10 @@ fn install_drop_handler(
     set_window_file_drop_handlers(Some(drop_handler), Some(hover_handler));
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "state handles are moved into async follow-up work"
+)]
 fn append_selected_paths(
     selected: Vec<PathBuf>,
     wizard: StudioState,
@@ -827,7 +861,7 @@ fn append_selected_paths(
 
     let generation = wizard.scan_generation.saturating_add(1);
     let mut next = wizard;
-    next.selected_root_paths = roots.clone();
+    next.selected_root_paths.clone_from(&roots);
     next.scan_generation = generation;
     set_wizard.call(next);
     set_scan.call(InputScanState::loading(generation));
@@ -937,9 +971,10 @@ fn to_tree_node_def(node: &InputTreeNode) -> TreeNodeDef {
 }
 
 fn path_label(path: &Path) -> String {
-    path.file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string())
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 fn same_path(left: &Path, right: &Path) -> bool {
@@ -1068,8 +1103,8 @@ unsafe fn pick_file_paths_inner() -> Option<Vec<PathBuf>> {
         dialog
             .SetOptions(options | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM)
             .ok()?;
-        dialog.Show(None).ok()?;
     }
+    unsafe { dialog.Show(None).ok()? };
 
     let results = unsafe { dialog.GetResults().ok()? };
     let count = unsafe { results.GetCount().ok()? };
@@ -1109,8 +1144,8 @@ unsafe fn pick_folder_paths_inner() -> Option<Vec<PathBuf>> {
         dialog
             .SetOptions(options | FOS_PICKFOLDERS | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM)
             .ok()?;
-        dialog.Show(None).ok()?;
     }
+    unsafe { dialog.Show(None).ok()? };
 
     let results = unsafe { dialog.GetResults().ok()? };
     let count = unsafe { results.GetCount().ok()? };

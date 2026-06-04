@@ -1,0 +1,33 @@
+[package]
+name = "windows-reactor"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "Windows UI library"
+repository = "https://github.com/microsoft/windows-rs"
+categories = ["os::windows-apis"]
+readme = "readme.md"
+
+[features]
+default = ["diagnostics"]
+diagnostics = []
+
+[dependencies]
+rustc-hash = "2"
+windows-core = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5" }
+windows = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_UI_Shell",
+] }
+windows-numerics = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5" }
+windows-collections = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5", features = ["std"] }
+windows-future = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5" }
+windows-reference = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5", features = ["std"] }
+windows-threading = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5", features = ["std"] }
+windows-time = { git = "https://github.com/microsoft/windows-rs", rev = "826ac184fc77e3875b2af1b616889413f327a6e5" }

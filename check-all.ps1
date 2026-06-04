@@ -1,5 +1,5 @@
 Write-Host -ForegroundColor Yellow "Running format check..."
-cargo +nightly fmt --all # -- --check
+cargo +nightly fmt --check --package cm
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host -ForegroundColor Yellow "Running clippy lint check..."

@@ -19,6 +19,7 @@ pub mod user_id;
 pub mod windows_cli;
 
 use crate::cli::Cli;
+use ::tracing::info;
 pub use max_name_length::*;
 pub use session_id::*;
 pub use site_id::*;
@@ -63,6 +64,7 @@ pub fn main() -> eyre::Result<()> {
         &cli.global_args.json_log_behaviour(),
     )?;
 
+    info!("Starting cm version {}", VERSION);
     cli.invoke(&app_home)?;
     Ok(())
 }

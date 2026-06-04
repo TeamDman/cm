@@ -1,4 +1,6 @@
 #[cfg(windows)]
+use color_eyre::owo_colors::OwoColorize;
+#[cfg(windows)]
 use eyre::Context;
 #[cfg(windows)]
 use std::sync::OnceLock;
@@ -8,6 +10,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 #[cfg(windows)]
 use std::sync::atomic::Ordering;
+#[cfg(windows)]
+use tracing::error;
+#[cfg(windows)]
+use tracing::info;
 
 /// Hide the default console window for GUI launches that did not inherit one.
 ///
@@ -44,6 +50,8 @@ static CLOSE_REQUESTED: AtomicBool = AtomicBool::new(false);
 static LAST_CTRL_C_MILLIS: AtomicU64 = AtomicU64::new(0);
 #[cfg(windows)]
 static GUI_CONTEXT: OnceLock<eframe::egui::Context> = OnceLock::new();
+#[cfg(windows)]
+static REACTOR_MARSHALLER: OnceLock<windows_reactor::UiMarshaller> = OnceLock::new();
 
 /// Register the GUI context so the console handler can wake the app loop.
 #[cfg(windows)]
@@ -53,6 +61,15 @@ pub fn register_gui_context(ctx: &eframe::egui::Context) {
 
 #[cfg(not(windows))]
 pub fn register_gui_context(_ctx: &eframe::egui::Context) {}
+
+/// Register the Reactor marshaller so the console handler can wake that UI loop.
+#[cfg(windows)]
+pub fn register_reactor_marshaller(marshaller: &windows_reactor::UiMarshaller) {
+    let _ = REACTOR_MARSHALLER.set(marshaller.clone());
+}
+
+#[cfg(not(windows))]
+pub fn register_reactor_marshaller(_marshaller: &()) {}
 
 /// Returns whether Ctrl+C requested a graceful close, clearing the request.
 #[cfg(windows)]
@@ -95,6 +112,7 @@ fn attach_ctrl_c_handler() -> windows::core::Result<()> {
     unsafe {
         windows::Win32::System::Console::SetConsoleCtrlHandler(Some(ctrl_c_handler), true)?;
     }
+    info!("Attached Ctrl+C handler to console");
     Ok(())
 }
 
@@ -109,15 +127,22 @@ unsafe extern "system" fn ctrl_c_handler(ctrl_type: u32) -> windows::core::BOOL 
     match ctrl_type {
         CTRL_C_EVENT | CTRL_BREAK_EVENT | CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT
         | CTRL_SHUTDOWN_EVENT => {
+            eprintln!("{}", "^C".red());
             let now = current_tick_count_millis();
             let last = LAST_CTRL_C_MILLIS.swap(now, Ordering::SeqCst);
             if last != 0 && now.saturating_sub(last) <= 1_000 {
+                eprintln!("{}", "Second Ctrl+C received, exiting immediately.".red());
                 std::process::exit(130);
             }
-
+            error!(
+                "Ctrl+C received, requesting graceful shutdown. Press again within 1 second to force quit."
+            );
             CLOSE_REQUESTED.store(true, Ordering::SeqCst);
             if let Some(ctx) = GUI_CONTEXT.get() {
                 ctx.request_repaint();
+            }
+            if let Some(marshaller) = REACTOR_MARSHALLER.get() {
+                let _ = marshaller.dispatch(windows_reactor::request_ui_rerender_on_ui_thread);
             }
 
             windows::core::BOOL(1)
