@@ -27,26 +27,14 @@ use egui_toast::ToastKind;
 use egui_toast::ToastOptions;
 use egui_toast::Toasts;
 use eyre::eyre;
-use once_cell::sync::Lazy;
 use state::AppState;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing::Level;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
-
-static WINDOW_ICON: Lazy<Option<Arc<egui::IconData>>> = Lazy::new(|| {
-    match eframe::icon_data::from_png_bytes(include_bytes!("../../resources/main.png")) {
-        Ok(icon) => Some(Arc::new(icon)),
-        Err(err) => {
-            error!(?err, "failed to load bundled window icon");
-            None
-        }
-    }
-});
 
 /// Run the GUI; the function blocks in place on the eframe app using
 /// `tokio::task::block_in_place`.
@@ -66,7 +54,7 @@ pub fn run_gui() -> eyre::Result<()> {
 
         let res = tokio::task::block_in_place(move || {
             eframe::run_native(
-                "CM - Creative Memories Photo Manager",
+                "Teamy CM Photo Manager",
                 native_options,
                 Box::new(|cc| Ok(Box::new(CmApp::new(cc)))),
             )
@@ -80,6 +68,45 @@ pub fn run_gui() -> eyre::Result<()> {
         std::process::exit(0);
     });
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn try_apply_embedded_window_icon() -> bool {
+    use teamy_windows::hicon::get_icon_from_current_module;
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{ICON_SMALL, SendMessageW, WM_SETICON};
+    use windows::core::w;
+
+    // eframe creates the native window lazily, so the first frame can still have no HWND.
+    let hwnd = unsafe { GetActiveWindow() };
+    if hwnd.0.is_null() {
+        return false;
+    }
+
+    let icon = match get_icon_from_current_module(w!("main_icon")) {
+        Ok(icon) => icon,
+        Err(err) => {
+            error!(?err, "failed to load embedded window icon");
+            return true;
+        }
+    };
+
+    unsafe {
+        let _ = SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_SMALL as usize)),
+            Some(LPARAM(icon.0 as isize)),
+        );
+    }
+
+    true
+}
+
+#[cfg(not(target_os = "windows"))]
+fn try_apply_embedded_window_icon() -> bool {
+    true
 }
 
 struct CmApp {
@@ -163,10 +190,7 @@ impl eframe::App for CmApp {
     #[expect(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if !self.window_icon_applied {
-            if let Some(icon) = WINDOW_ICON.clone() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(icon)));
-            }
-            self.window_icon_applied = true;
+            self.window_icon_applied = try_apply_embedded_window_icon();
         }
 
         // Initialize on first frame
@@ -330,7 +354,7 @@ impl eframe::App for CmApp {
                 .open(&mut self.state.about_open)
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.heading("CM - Creative Memories Photo Manager");
+                        ui.heading("Teamy CM Photo Manager");
                         ui.add_space(10.0);
                         ui.label(format!("Version: {}", env!("CARGO_PKG_VERSION")));
                         ui.label(format!(

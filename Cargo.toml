@@ -18,7 +18,6 @@ clap = { version = "4", features = ["derive"] }
 eyre = "0.6"
 color-eyre = "0.5"
 arbitrary = { version = "1", features = ["derive"] }
-once_cell = "1"
 directories-next = "2"
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["full"] }
@@ -46,7 +45,7 @@ egui_extras = { version = "0.33.3", features = ["all_loaders"] }
 image = { version = "0.25.9", features = ["jpeg", "png", "webp"] }
 kamadak-exif = "0.6"
 img-parts = "0.3"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 teamy-windows = "0.8.1"
 egui-toast = "0.19.1"
 # cloud_terrastodon = { version = "0.31.0", features = ["ui-egui"], default-features = false }

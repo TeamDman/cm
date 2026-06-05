@@ -932,7 +932,6 @@ dependencies = [
  "image",
  "img-parts",
  "kamadak-exif",
- "once_cell",
  "regex",
  "reqwest",
  "sha2",
