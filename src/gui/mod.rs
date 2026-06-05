@@ -27,14 +27,26 @@ use egui_toast::ToastKind;
 use egui_toast::ToastOptions;
 use egui_toast::Toasts;
 use eyre::eyre;
+use once_cell::sync::Lazy;
 use state::AppState;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::Level;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+
+static WINDOW_ICON: Lazy<Option<Arc<egui::IconData>>> = Lazy::new(|| {
+    match eframe::icon_data::from_png_bytes(include_bytes!("../../resources/main.png")) {
+        Ok(icon) => Some(Arc::new(icon)),
+        Err(err) => {
+            error!(?err, "failed to load bundled window icon");
+            None
+        }
+    }
+});
 
 /// Run the GUI; the function blocks in place on the eframe app using
 /// `tokio::task::block_in_place`.
@@ -73,6 +85,7 @@ pub fn run_gui() -> eyre::Result<()> {
 struct CmApp {
     tree: egui_tiles::Tree<CmPane>,
     state: AppState,
+    window_icon_applied: bool,
     /// Texture handle for output preview (to show cropped images)
     output_texture: Option<TextureHandle>,
     /// Path of the image currently loaded in `output_texture`
@@ -128,6 +141,7 @@ impl CmApp {
         CmApp {
             tree,
             state,
+            window_icon_applied: false,
             output_texture: None,
             output_texture_path: None,
             threshold_texture: None,
@@ -148,6 +162,13 @@ impl CmApp {
 impl eframe::App for CmApp {
     #[expect(clippy::too_many_lines)]
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if !self.window_icon_applied {
+            if let Some(icon) = WINDOW_ICON.clone() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(icon)));
+            }
+            self.window_icon_applied = true;
+        }
+
         // Initialize on first frame
         if !self.state.initialized {
             self.state.reload_data();
