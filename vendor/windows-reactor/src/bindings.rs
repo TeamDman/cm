@@ -17305,6 +17305,19 @@ impl windows_core::RuntimeType for IUIElement {
         windows_core::imp::ConstBuffer::for_interface::<Self>();
 }
 impl IUIElement {
+    pub fn put_AllowDrop(&self, value: bool) -> windows_core::Result<()> {
+        type PutAllowDropFn =
+            unsafe extern "system" fn(*mut core::ffi::c_void, bool) -> windows_core::HRESULT;
+        unsafe {
+            let put_allow_drop: PutAllowDropFn =
+                core::mem::transmute(windows_core::Interface::vtable(self).put_AllowDrop);
+            put_allow_drop(
+                windows_core::Interface::as_raw(self),
+                value,
+            )
+            .ok()
+        }
+    }
     pub fn put_Opacity(&self, value: f64) -> windows_core::Result<()> {
         unsafe {
             (windows_core::Interface::vtable(self).put_Opacity)(

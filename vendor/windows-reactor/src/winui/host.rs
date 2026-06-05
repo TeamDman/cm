@@ -1,12 +1,15 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::Duration;
 
 use windows::Win32::Foundation::{HWND as Win32Hwnd, POINTL};
+use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Com::{DVASPECT_CONTENT, FORMATETC, IDataObject, TYMED_HGLOBAL};
 use windows::Win32::System::Ole::{
     CF_HDROP, DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_NONE, IDropTarget, IDropTarget_Impl,
     OleInitialize, RegisterDragDrop, ReleaseStgMedium, RevokeDragDrop,
 };
+use windows::Win32::UI::Shell::{CLSID_DragDropHelper, IDropTargetHelper};
 use windows::Win32::System::SystemServices::MODIFIERKEYS_FLAGS;
 use windows_core::Interface;
 
@@ -17,17 +20,20 @@ type HDROP = *mut core::ffi::c_void;
 type LRESULT = isize;
 type SubclassProc =
     Option<unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM, usize, usize) -> LRESULT>;
+type EnumChildProc = Option<unsafe extern "system" fn(HWND, LPARAM) -> windows_core::BOOL>;
 
 const WM_DROPFILES: u32 = 0x0233;
 const WM_CLOSE: u32 = 0x0010;
 const DROP_QUERY_FILE_COUNT: u32 = u32::MAX;
 const FILE_DROP_SUBCLASS_ID: usize = 0x434d_6472_6f70;
+const FILE_DROP_HOVER_CLEAR_DELAY: Duration = Duration::from_millis(50);
 
 windows_core::link!("comctl32.dll" "system" fn DefSubclassProc(hwnd: HWND, umsg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT);
 windows_core::link!("comctl32.dll" "system" fn SetWindowSubclass(hwnd: HWND, pfnsubclass: SubclassProc, uidsubclass: usize, dwrefdata: usize) -> windows_core::BOOL);
 windows_core::link!("shell32.dll" "system" fn DragAcceptFiles(hwnd: HWND, faccept: windows_core::BOOL));
 windows_core::link!("shell32.dll" "system" fn DragFinish(hdrop: HDROP));
 windows_core::link!("shell32.dll" "system" fn DragQueryFileW(hdrop: HDROP, ifile: u32, lpszfile: *mut u16, cch: u32) -> u32);
+windows_core::link!("user32.dll" "system" fn EnumChildWindows(hwndparent: HWND, lpenumfunc: EnumChildProc, lparam: LPARAM) -> windows_core::BOOL);
 
 thread_local! {
     static ROOT_FRAMEWORK_ELEMENT: RefCell<Option<FrameworkElement>> = const { RefCell::new(None) };
@@ -40,16 +46,22 @@ thread_local! {
     static PENDING_TALL: Cell<Option<bool>> = const { Cell::new(None) };
     static FILE_DROP_HANDLER: RefCell<Option<crate::core::callback::Callback<Vec<String>>>> = const { RefCell::new(None) };
     static FILE_DROP_HOVER_HANDLER: RefCell<Option<crate::core::callback::Callback<bool>>> = const { RefCell::new(None) };
+    static FILE_DROP_ENABLED: Cell<bool> = const { Cell::new(false) };
     static FILE_DROP_HWND: Cell<HWND> = const { Cell::new(core::ptr::null_mut()) };
-    static FILE_DROP_SUBCLASS_INSTALLED: Cell<bool> = const { Cell::new(false) };
-    static FILE_DROP_TARGET: RefCell<Option<IDropTarget>> = const { RefCell::new(None) };
-    static FILE_DROP_TARGET_HWND: Cell<HWND> = const { Cell::new(core::ptr::null_mut()) };
+    static FILE_DROP_ACTIVE_HWNDS: RefCell<Vec<HWND>> = const { RefCell::new(Vec::new()) };
+    static FILE_DROP_SUBCLASSED_HWNDS: RefCell<Vec<HWND>> = const { RefCell::new(Vec::new()) };
+    static FILE_DROP_TARGETS: RefCell<Vec<(HWND, IDropTarget)>> = const { RefCell::new(Vec::new()) };
+    static FILE_DROP_TARGET_HELPER: RefCell<Option<IDropTargetHelper>> = const { RefCell::new(None) };
     static FILE_DROP_ACCEPTING_DRAG: Cell<bool> = const { Cell::new(false) };
     static FILE_DROP_HOVERING: Cell<bool> = const { Cell::new(false) };
+    static FILE_DROP_HOVER_CLEAR_TIMER: RefCell<Option<DispatcherTimer>> = const { RefCell::new(None) };
+    static FILE_DROP_HOVER_CLEAR_TICKET: Cell<u64> = const { Cell::new(0) };
     static OLE_INITIALIZED_FOR_DROP: Cell<bool> = const { Cell::new(false) };
 }
 
-struct FileDropTarget;
+struct FileDropTarget {
+    hwnd: HWND,
+}
 
 windows_core::implement_decl! {
     impl FileDropTarget as FileDropTarget_Impl: [IDropTarget]
@@ -60,13 +72,13 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
         &self,
         pdataobj: windows_core::Ref<IDataObject>,
         _grfkeystate: MODIFIERKEYS_FLAGS,
-        _pt: &POINTL,
+        pt: &POINTL,
         pdweffect: *mut DROPEFFECT,
     ) -> windows_core::Result<()> {
         let accepts = file_drop_handler_present()
-            && pdataobj
-                .as_ref()
-                .is_some_and(|data_object| unsafe { data_object_has_hdrop(data_object) });
+            && pdataobj.as_ref().is_some_and(|data_object| unsafe {
+                data_object_has_hdrop(data_object) || !paths_from_data_object(data_object).is_empty()
+            });
         FILE_DROP_ACCEPTING_DRAG.with(|cell| cell.set(accepts));
         set_drop_effect(
             pdweffect,
@@ -76,6 +88,15 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
                 DROPEFFECT_NONE
             },
         );
+        if let Some(data_object) = pdataobj.as_ref() {
+            notify_drop_target_helper_drag_enter(
+                self.hwnd,
+                data_object,
+                pt,
+                effective_drop_effect(accepts),
+            );
+        }
+        cancel_file_drop_hover_clear();
         set_file_drop_hovering(accepts);
         Ok(())
     }
@@ -83,7 +104,7 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
     fn DragOver(
         &self,
         _grfkeystate: MODIFIERKEYS_FLAGS,
-        _pt: &POINTL,
+        pt: &POINTL,
         pdweffect: *mut DROPEFFECT,
     ) -> windows_core::Result<()> {
         let accepts = FILE_DROP_ACCEPTING_DRAG.with(Cell::get) && file_drop_handler_present();
@@ -95,13 +116,18 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
                 DROPEFFECT_NONE
             },
         );
+        notify_drop_target_helper_drag_over(pt, effective_drop_effect(accepts));
+        if accepts {
+            cancel_file_drop_hover_clear();
+        }
         set_file_drop_hovering(accepts);
         Ok(())
     }
 
     fn DragLeave(&self) -> windows_core::Result<()> {
         FILE_DROP_ACCEPTING_DRAG.with(|cell| cell.set(false));
-        set_file_drop_hovering(false);
+        notify_drop_target_helper_drag_leave();
+        schedule_file_drop_hover_clear();
         Ok(())
     }
 
@@ -109,10 +135,11 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
         &self,
         pdataobj: windows_core::Ref<IDataObject>,
         _grfkeystate: MODIFIERKEYS_FLAGS,
-        _pt: &POINTL,
+        pt: &POINTL,
         pdweffect: *mut DROPEFFECT,
     ) -> windows_core::Result<()> {
         FILE_DROP_ACCEPTING_DRAG.with(|cell| cell.set(false));
+        cancel_file_drop_hover_clear();
         set_file_drop_hovering(false);
 
         let paths = if file_drop_handler_present() {
@@ -132,6 +159,9 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
                 DROPEFFECT_NONE
             },
         );
+        if let Some(data_object) = pdataobj.as_ref() {
+            notify_drop_target_helper_drop(data_object, pt, effective_drop_effect(accepts));
+        }
 
         if accepts {
             let handler = FILE_DROP_HANDLER.with(|cell| cell.borrow().clone());
@@ -191,12 +221,14 @@ pub fn set_window_file_drop_handlers(
     handler: Option<crate::core::callback::Callback<Vec<String>>>,
     hover_handler: Option<crate::core::callback::Callback<bool>>,
 ) {
+    let enabled = handler.is_some();
     FILE_DROP_HANDLER.with(|cell| {
         *cell.borrow_mut() = handler;
     });
     FILE_DROP_HOVER_HANDLER.with(|cell| {
         *cell.borrow_mut() = hover_handler;
     });
+    FILE_DROP_ENABLED.with(|cell| cell.set(enabled));
 
     FILE_DROP_HWND.with(|cell| {
         let hwnd = cell.get();
@@ -207,24 +239,54 @@ pub fn set_window_file_drop_handlers(
 }
 
 fn sync_file_drop_acceptance(hwnd: HWND) {
-    let accepts_files = FILE_DROP_HANDLER.with(|cell| cell.borrow().is_some());
-    unsafe {
-        DragAcceptFiles(hwnd, accepts_files.into());
+    let accepts_files = file_drop_enabled();
+    let hwnds = collect_file_drop_hwnds(hwnd);
+    let stale_hwnds = FILE_DROP_ACTIVE_HWNDS.with(|cell| {
+        let mut tracked = cell.borrow_mut();
+        let stale = tracked
+            .iter()
+            .copied()
+            .filter(|tracked_hwnd| !hwnds.contains(tracked_hwnd))
+            .collect::<Vec<_>>();
+        *tracked = hwnds.clone();
+        stale
+    });
+    for stale_hwnd in stale_hwnds {
+        unsafe {
+            DragAcceptFiles(stale_hwnd, false.into());
+        }
+        revoke_ole_file_drop_target(stale_hwnd);
     }
+    for target_hwnd in &hwnds {
+        unsafe {
+            DragAcceptFiles(*target_hwnd, accepts_files.into());
+        }
+    }
+    ROOT_FRAMEWORK_ELEMENT.with(|cell| {
+        if let Some(fe) = cell.borrow().as_ref()
+            && let Ok(ui) = fe.cast::<UIElement>()
+        {
+            let _ = set_ui_element_allow_drop(&ui, accepts_files);
+        }
+    });
 
     if accepts_files {
-        ensure_file_drop_subclass(hwnd);
-        ensure_ole_file_drop_target(hwnd);
+        for target_hwnd in hwnds {
+            ensure_file_drop_subclass(target_hwnd);
+            ensure_ole_file_drop_target(target_hwnd);
+        }
     } else {
-        revoke_ole_file_drop_target();
+        cancel_file_drop_hover_clear();
+        revoke_all_ole_file_drop_targets();
         FILE_DROP_ACCEPTING_DRAG.with(|cell| cell.set(false));
         set_file_drop_hovering(false);
     }
 }
 
 fn ensure_file_drop_subclass(hwnd: HWND) {
-    let installed = FILE_DROP_SUBCLASS_INSTALLED.with(Cell::get);
-    if installed {
+    let already_installed =
+        FILE_DROP_SUBCLASSED_HWNDS.with(|cell| cell.borrow().contains(&hwnd));
+    if already_installed {
         return;
     }
 
@@ -237,7 +299,9 @@ fn ensure_file_drop_subclass(hwnd: HWND) {
         )
     }
     .as_bool();
-    FILE_DROP_SUBCLASS_INSTALLED.with(|cell| cell.set(installed));
+    if installed {
+        FILE_DROP_SUBCLASSED_HWNDS.with(|cell| cell.borrow_mut().push(hwnd));
+    }
 }
 
 unsafe extern "system" fn file_drop_subclass_proc(
@@ -300,6 +364,14 @@ fn set_drop_effect(pdweffect: *mut DROPEFFECT, effect: DROPEFFECT) {
     }
 }
 
+fn effective_drop_effect(accepts: bool) -> DROPEFFECT {
+    if accepts {
+        DROPEFFECT_COPY
+    } else {
+        DROPEFFECT_NONE
+    }
+}
+
 fn set_file_drop_hovering(hovering: bool) {
     let changed = FILE_DROP_HOVERING.with(|cell| {
         let changed = cell.get() != hovering;
@@ -314,33 +386,90 @@ fn set_file_drop_hovering(hovering: bool) {
     }
 }
 
+fn cancel_file_drop_hover_clear() {
+    FILE_DROP_HOVER_CLEAR_TICKET.with(|cell| cell.set(cell.get().saturating_add(1)));
+    FILE_DROP_HOVER_CLEAR_TIMER.with(|cell| {
+        if let Some(timer) = cell.borrow_mut().take() {
+            let _ = timer.stop();
+        }
+    });
+}
+
+fn schedule_file_drop_hover_clear() {
+    cancel_file_drop_hover_clear();
+    let ticket = FILE_DROP_HOVER_CLEAR_TICKET.with(Cell::get);
+    let timer = DispatcherTimer::new_one_shot(FILE_DROP_HOVER_CLEAR_DELAY, move || {
+        let still_current = FILE_DROP_HOVER_CLEAR_TICKET.with(Cell::get) == ticket;
+        let still_not_accepting = !FILE_DROP_ACCEPTING_DRAG.with(Cell::get);
+        if still_current && still_not_accepting {
+            set_file_drop_hovering(false);
+        }
+    });
+    if let Ok(timer) = timer {
+        FILE_DROP_HOVER_CLEAR_TIMER.with(|cell| {
+            *cell.borrow_mut() = Some(timer);
+        });
+    } else {
+        set_file_drop_hovering(false);
+    }
+}
+
+pub(crate) fn file_drop_enabled() -> bool {
+    FILE_DROP_ENABLED.with(Cell::get)
+}
+
+pub(crate) fn apply_global_file_drop_state(element: &UIElement) {
+    let _ = set_ui_element_allow_drop(element, file_drop_enabled());
+}
+
+fn set_ui_element_allow_drop(element: &UIElement, allow_drop: bool) -> windows_core::Result<()> {
+    element.put_AllowDrop(allow_drop)
+}
+
 fn ensure_ole_file_drop_target(hwnd: HWND) {
-    let registered_hwnd = FILE_DROP_TARGET_HWND.with(Cell::get);
-    if registered_hwnd == hwnd && !registered_hwnd.is_null() {
+    let already_registered = FILE_DROP_TARGETS.with(|cell| {
+        cell.borrow()
+            .iter()
+            .any(|(registered_hwnd, _)| *registered_hwnd == hwnd)
+    });
+    if already_registered {
         return;
     }
-
-    revoke_ole_file_drop_target();
 
     if !ensure_ole_initialized_for_drop() {
         return;
     }
 
-    let target: IDropTarget = FileDropTarget.into();
+    let target: IDropTarget = FileDropTarget { hwnd }.into();
     let registered = unsafe { RegisterDragDrop(Win32Hwnd(hwnd), &target) }.is_ok();
     if registered {
-        FILE_DROP_TARGET.with(|cell| *cell.borrow_mut() = Some(target));
-        FILE_DROP_TARGET_HWND.with(|cell| cell.set(hwnd));
+        FILE_DROP_TARGETS.with(|cell| cell.borrow_mut().push((hwnd, target)));
     }
 }
 
-fn revoke_ole_file_drop_target() {
-    let hwnd = FILE_DROP_TARGET_HWND.with(Cell::get);
-    if !hwnd.is_null() {
+fn revoke_ole_file_drop_target(hwnd: HWND) {
+    if hwnd.is_null() {
+        return;
+    }
+
+    let removed = FILE_DROP_TARGETS.with(|cell| {
+        let mut targets = cell.borrow_mut();
+        targets
+            .iter()
+            .position(|(registered_hwnd, _)| *registered_hwnd == hwnd)
+            .map(|index| targets.remove(index))
+    });
+    if removed.is_some() {
         let _ = unsafe { RevokeDragDrop(Win32Hwnd(hwnd)) };
     }
-    FILE_DROP_TARGET.with(|cell| *cell.borrow_mut() = None);
-    FILE_DROP_TARGET_HWND.with(|cell| cell.set(core::ptr::null_mut()));
+}
+
+fn revoke_all_ole_file_drop_targets() {
+    let targets = FILE_DROP_TARGETS.with(|cell| std::mem::take(&mut *cell.borrow_mut()));
+    for (hwnd, _) in targets {
+        let _ = unsafe { RevokeDragDrop(Win32Hwnd(hwnd)) };
+    }
+    FILE_DROP_TARGET_HELPER.with(|cell| *cell.borrow_mut() = None);
 }
 
 fn ensure_ole_initialized_for_drop() -> bool {
@@ -351,6 +480,94 @@ fn ensure_ole_initialized_for_drop() -> bool {
     let initialized = unsafe { OleInitialize(None) }.is_ok();
     OLE_INITIALIZED_FOR_DROP.with(|cell| cell.set(initialized));
     initialized
+}
+
+fn ensure_drop_target_helper() -> Option<IDropTargetHelper> {
+    if let Some(helper) = FILE_DROP_TARGET_HELPER.with(|cell| cell.borrow().clone()) {
+        return Some(helper);
+    }
+
+    let helper = unsafe {
+        CoCreateInstance::<_, IDropTargetHelper>(
+            &CLSID_DragDropHelper,
+            None,
+            CLSCTX_INPROC_SERVER,
+        )
+        .ok()
+    }?;
+    FILE_DROP_TARGET_HELPER.with(|cell| *cell.borrow_mut() = Some(helper.clone()));
+    Some(helper)
+}
+
+fn notify_drop_target_helper_drag_enter(
+    hwnd: HWND,
+    data_object: &IDataObject,
+    point: &POINTL,
+    effect: DROPEFFECT,
+) {
+    let Some(helper) = ensure_drop_target_helper() else {
+        return;
+    };
+    if hwnd.is_null() {
+        return;
+    }
+    let point = to_point(point);
+    let _ = unsafe { helper.DragEnter(Win32Hwnd(hwnd), data_object, &point, effect) };
+}
+
+fn notify_drop_target_helper_drag_over(point: &POINTL, effect: DROPEFFECT) {
+    let Some(helper) = ensure_drop_target_helper() else {
+        return;
+    };
+    let point = to_point(point);
+    let _ = unsafe { helper.DragOver(&point, effect) };
+}
+
+fn notify_drop_target_helper_drag_leave() {
+    let Some(helper) = ensure_drop_target_helper() else {
+        return;
+    };
+    let _ = unsafe { helper.DragLeave() };
+}
+
+fn notify_drop_target_helper_drop(data_object: &IDataObject, point: &POINTL, effect: DROPEFFECT) {
+    let Some(helper) = ensure_drop_target_helper() else {
+        return;
+    };
+    let point = to_point(point);
+    let _ = unsafe { helper.Drop(data_object, &point, effect) };
+}
+
+fn to_point(point: &POINTL) -> windows::Win32::Foundation::POINT {
+    windows::Win32::Foundation::POINT {
+        x: point.x,
+        y: point.y,
+    }
+}
+
+fn collect_file_drop_hwnds(root_hwnd: HWND) -> Vec<HWND> {
+    if root_hwnd.is_null() {
+        return Vec::new();
+    }
+
+    let mut hwnds = vec![root_hwnd];
+    unsafe {
+        let _ = EnumChildWindows(
+            root_hwnd,
+            Some(collect_file_drop_child_hwnds),
+            (&mut hwnds as *mut Vec<HWND>) as LPARAM,
+        );
+    }
+    hwnds
+}
+
+unsafe extern "system" fn collect_file_drop_child_hwnds(
+    hwnd: HWND,
+    lparam: LPARAM,
+) -> windows_core::BOOL {
+    let hwnds = unsafe { &mut *(lparam as *mut Vec<HWND>) };
+    hwnds.push(hwnd);
+    true.into()
 }
 
 fn hdrop_format() -> FORMATETC {
@@ -580,6 +797,7 @@ impl ReactorHost {
                 Some(rid) => {
                     if let Some(ui) = state.render_host.with_backend(|b| b.get_ui_element(rid)) {
                         let ui_element: UIElement = ui.cast().unwrap();
+                        apply_global_file_drop_state(&ui_element);
                         let _ = state.window.put_Content(&ui_element);
                         last_attached_for_hook.set(Some(rid));
 

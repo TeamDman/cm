@@ -706,6 +706,7 @@ impl Backend for WinUIBackend {
     fn create(&mut self, kind: ControlKind) -> ControlId {
         let id = self.alloc_id();
         let handle = Self::make_handle_for_kind(kind);
+        super::apply_global_file_drop_state(&handle.as_ui_element());
         self.controls.borrow_mut().insert(id, handle);
         id
     }

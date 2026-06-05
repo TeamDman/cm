@@ -354,6 +354,10 @@ fn main_menu(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         .into()
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "UI layout is easier to maintain as one builder function"
+)]
 fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
     let is_dark = matches!(cx.use_color_scheme(), ColorScheme::Dark);
     let (wizard, set_wizard) = cx.use_state(StudioState::default());
@@ -455,8 +459,9 @@ fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         .on_pane_toggle_requested(move || set_pane_open.call(!is_pane_open))
         .footer(theme_toggle_button(is_dark))
         .tall(true);
+    let drop_overlay = studio_drop_overlay(drop_hovering);
 
-    grid((title_bar.grid_row(0), navigation.grid_row(1)))
+    grid((title_bar.grid_row(0), navigation.grid_row(1), drop_overlay))
         .rows([GridLength::Auto, GridLength::Star(1.0)])
         .columns([GridLength::Star(1.0)])
         .into()
@@ -582,10 +587,6 @@ fn product_search(props: &AppModeProps, cx: &mut RenderCx) -> Element {
 }
 
 #[expect(
-    clippy::too_many_lines,
-    reason = "wizard input step is a single UI builder slice"
-)]
-#[expect(
     clippy::needless_pass_by_value,
     reason = "state handles are cloned into event callbacks"
 )]
@@ -596,6 +597,7 @@ fn input_paths_step(
     set_scan: AsyncSetState<InputScanState>,
     drop_hovering: bool,
 ) -> Element {
+    let has_selected_paths = !wizard.selected_root_paths.is_empty();
     let add_choice = {
         let wizard = wizard.clone();
         let set_wizard = set_wizard.clone();
@@ -644,35 +646,24 @@ fn input_paths_step(
         .automation_id("reactor-clear-paths")
         .into();
     let toolbar: Element = hstack((add_button, clear_button)).spacing(8.0).into();
-    let drop_hint: Element = if drop_hovering {
-        InfoBar::new("Ready to add paths")
-            .message("Release to add the dropped files and folders.")
-            .success()
-            .is_closable(false)
-            .max_width(960.0)
-            .automation_id("reactor-drop-hover-indicator")
-            .into()
-    } else {
-        Element::Empty
-    };
+    let drop_hint: Element = drop_zone_hint(drop_hovering, has_selected_paths);
     let status: Element = input_scan_status(&wizard, &scan);
-    let roots_summary: Element = selected_roots_summary(&wizard.selected_root_paths);
-    let tree_nodes = scan.nodes.iter().map(to_tree_node_def).collect::<Vec<_>>();
-    let tree: Element = tree_view(tree_nodes)
-        .selection_mode(TreeSelectionMode::Single)
-        .on_item_invoked(|_| {})
-        .automation_id("reactor-input-tree")
-        .into();
-    let tree_surface: Element = border(scroll_view(tree).height(320.0))
+    let tree_surface: Element = input_tree_surface(&scan, drop_hovering)
         .border_brush(if drop_hovering {
             ThemeRef::Accent
         } else {
-            ThemeRef::CardStroke
+            ThemeRef::AccentSecondary
         })
-        .border_thickness(Thickness::uniform(1.0))
-        .corner_radius(6.0)
-        .padding(Thickness::uniform(8.0))
+        .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.5 }))
+        .background(if drop_hovering {
+            ThemeRef::SubtleFill
+        } else {
+            ThemeRef::SolidBackground
+        })
+        .corner_radius(10.0)
+        .padding(Thickness::uniform(12.0))
         .max_width(960.0)
+        .min_height(360.0)
         .into();
 
     let content = grid((
@@ -684,11 +675,9 @@ fn input_paths_step(
         toolbar.grid_row(1),
         drop_hint.grid_row(2),
         status.grid_row(3),
-        roots_summary.grid_row(4),
-        tree_surface.grid_row(5),
+        tree_surface.grid_row(4),
     ))
     .rows([
-        GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
@@ -703,46 +692,116 @@ fn input_paths_step(
     page_shell(content)
 }
 
-fn selected_roots_summary(roots: &[PathBuf]) -> Element {
-    if roots.is_empty() {
-        return text_block("No selected roots yet.")
-            .foreground(ThemeRef::SecondaryText)
-            .font_size(13.0)
-            .wrap()
-            .max_width(960.0)
-            .into();
+fn drop_zone_hint(drop_hovering: bool, has_selected_paths: bool) -> Element {
+    let (title, message, tone, automation_id) = if drop_hovering {
+        (
+            "Drop to add paths",
+            "Release now to add the dragged files and folders to the input tree.",
+            InfoBarTone::Success,
+            "reactor-drop-hover-indicator",
+        )
+    } else if has_selected_paths {
+        (
+            "Drag and drop is ready",
+            "You can still drag more files or folders into the panel below at any time.",
+            InfoBarTone::Informational,
+            "reactor-drop-ready-indicator",
+        )
+    } else {
+        (
+            "Drop files or folders here",
+            "Drag paths from Explorer into the large panel below, or use Add paths.",
+            InfoBarTone::Informational,
+            "reactor-drop-empty-indicator",
+        )
+    };
+
+    info_bar_with_tone(title, message, tone)
+        .max_width(960.0)
+        .automation_id(automation_id)
+        .into()
+}
+
+fn input_tree_surface(scan: &InputScanState, drop_hovering: bool) -> Border {
+    if scan.nodes.is_empty() {
+        let title = if drop_hovering {
+            "Release to add files and folders"
+        } else {
+            "Drop files or folders here"
+        };
+        let subtitle = if drop_hovering {
+            "CM will add the dropped paths and scan folder descendants into the tree."
+        } else {
+            "This panel is the drop target. Drag from Explorer or use Add paths above."
+        };
+
+        return border(
+            vstack((
+                text_block(title).font_size(22.0).bold(),
+                text_block(subtitle)
+                    .foreground(ThemeRef::SecondaryText)
+                    .font_size(13.0)
+                    .wrap()
+                    .max_width(520.0),
+            ))
+            .spacing(10.0),
+        )
+        .background(if drop_hovering {
+            ThemeRef::SystemSuccessBackground
+        } else {
+            ThemeRef::SubtleFill
+        })
+        .border_brush(if drop_hovering {
+            ThemeRef::SystemSuccess
+        } else {
+            ThemeRef::AccentSecondary
+        })
+        .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.0 }))
+        .corner_radius(8.0)
+        .padding(Thickness::uniform(24.0))
+        .height(336.0);
     }
 
-    let rows = roots
-        .iter()
-        .map(|path| {
-            text_block(path.display().to_string())
-                .font_size(12.0)
-                .wrap()
-                .into()
-        })
-        .collect::<Vec<Element>>();
+    let tree_nodes = scan.nodes.iter().map(to_tree_node_def).collect::<Vec<_>>();
+    let tree: Element = tree_view(tree_nodes)
+        .selection_mode(TreeSelectionMode::None)
+        .automation_id("reactor-input-tree")
+        .into();
 
-    vstack((
-        text_block(format!("Selected roots: {}", roots.len()))
-            .font_size(13.0)
-            .semibold(),
-        vstack(rows).spacing(4.0),
-    ))
-    .spacing(6.0)
-    .max_width(960.0)
-    .into()
+    border(scroll_view(tree).height(320.0))
+}
+
+#[derive(Clone, Copy)]
+enum InfoBarTone {
+    Informational,
+    Success,
+    Warning,
+}
+
+fn info_bar_with_tone(
+    title: impl Into<String>,
+    message: impl Into<String>,
+    tone: InfoBarTone,
+) -> InfoBar {
+    let info_bar = InfoBar::new(title).message(message).is_closable(false);
+
+    match tone {
+        InfoBarTone::Informational => info_bar.informational(),
+        InfoBarTone::Success => info_bar.success(),
+        InfoBarTone::Warning => info_bar.warning(),
+    }
 }
 
 fn input_scan_status(wizard: &StudioState, scan: &InputScanState) -> Element {
     match scan.status {
-        ScanStatus::Empty => InfoBar::new("No input paths")
-            .message("Use Add paths to choose files or folders.")
-            .informational()
-            .is_closable(false)
-            .max_width(960.0)
-            .automation_id("reactor-input-status")
-            .into(),
+        ScanStatus::Empty => info_bar_with_tone(
+            "No input paths yet",
+            "Add paths or drop files and folders into the panel below.",
+            InfoBarTone::Informational,
+        )
+        .max_width(960.0)
+        .automation_id("reactor-input-status")
+        .into(),
         ScanStatus::Loading => hstack((
             ProgressRing::indeterminate()
                 .width(18.0)
@@ -759,24 +818,26 @@ fn input_scan_status(wizard: &StudioState, scan: &InputScanState) -> Element {
         .max_width(960.0)
         .automation_id("reactor-input-status")
         .into(),
-        ScanStatus::Ready => InfoBar::new("Input tree ready")
-            .message(format!(
-                "Showing {} selected root{} and their descendants.",
+        ScanStatus::Ready => info_bar_with_tone(
+            "Input tree ready",
+            format!(
+                "Showing {} path{} and any scanned folder descendants.",
                 wizard.selected_root_paths.len(),
                 plural_suffix(wizard.selected_root_paths.len())
-            ))
-            .success()
-            .is_closable(false)
-            .max_width(960.0)
-            .automation_id("reactor-input-status")
-            .into(),
-        ScanStatus::ReadyWithIssues => InfoBar::new("Input tree ready with issues")
-            .message(error_summary(&scan.errors))
-            .warning()
-            .is_closable(false)
-            .max_width(960.0)
-            .automation_id("reactor-input-status")
-            .into(),
+            ),
+            InfoBarTone::Success,
+        )
+        .max_width(960.0)
+        .automation_id("reactor-input-status")
+        .into(),
+        ScanStatus::ReadyWithIssues => info_bar_with_tone(
+            "Input tree ready with issues",
+            error_summary(&scan.errors),
+            InfoBarTone::Warning,
+        )
+        .max_width(960.0)
+        .automation_id("reactor-input-status")
+        .into(),
     }
 }
 
@@ -797,6 +858,7 @@ fn placeholder_step(
             ))
             .informational()
             .is_closable(false)
+            .max_width(960.0)
             .max_width(720.0),
     ))
     .spacing(24.0)
@@ -1040,6 +1102,46 @@ fn page_shell(content: impl Into<Element>) -> Element {
         .background(ThemeRef::SolidBackground)
         .padding(page_padding())
         .into()
+}
+
+fn studio_drop_overlay(drop_hovering: bool) -> Element {
+    if !drop_hovering {
+        return Element::Empty;
+    }
+
+    border(
+        border(
+            vstack((
+                text_block("Drop files or folders anywhere in this window")
+                    .font_size(26.0)
+                    .bold()
+                    .horizontal_alignment(HorizontalAlignment::Center),
+                text_block(
+                    "Release now to add the dragged paths. CM will keep scanning folder descendants into the input tree.",
+                )
+                .foreground(ThemeRef::SecondaryText)
+                .font_size(14.0)
+                .horizontal_alignment(HorizontalAlignment::Center)
+                .max_width(560.0)
+                .wrap(),
+            ))
+            .spacing(12.0),
+        )
+        .background(ThemeRef::SolidBackground)
+        .border_brush(ThemeRef::SystemSuccess)
+        .border_thickness(Thickness::uniform(2.0))
+        .corner_radius(16.0)
+        .padding(Thickness::uniform(28.0))
+        .max_width(640.0)
+        .horizontal_alignment(HorizontalAlignment::Center)
+        .vertical_alignment(VerticalAlignment::Center),
+    )
+    .background(ThemeRef::SubtleFill)
+    .opacity(0.96)
+    .grid_row(0)
+    .grid_row_span(2)
+    .automation_id("reactor-studio-drop-overlay")
+    .into()
 }
 
 fn page_header(title: &'static str, description: &'static str) -> Element {
