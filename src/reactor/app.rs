@@ -663,7 +663,8 @@ fn input_paths_step(
         .corner_radius(10.0)
         .padding(Thickness::uniform(12.0))
         .max_width(960.0)
-        .min_height(360.0)
+        .min_height(260.0)
+        .vertical_alignment(VerticalAlignment::Stretch)
         .into();
 
     let content = grid((
@@ -682,7 +683,7 @@ fn input_paths_step(
         GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
-        GridLength::Auto,
+        GridLength::Star(1.0),
     ])
     .columns([GridLength::Star(1.0)])
     .row_spacing(16.0)
@@ -759,7 +760,8 @@ fn input_tree_surface(scan: &InputScanState, drop_hovering: bool) -> Border {
         .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.0 }))
         .corner_radius(8.0)
         .padding(Thickness::uniform(24.0))
-        .height(336.0);
+        .min_height(220.0)
+        .vertical_alignment(VerticalAlignment::Stretch);
     }
 
     let tree_nodes = scan.nodes.iter().map(to_tree_node_def).collect::<Vec<_>>();
@@ -768,7 +770,12 @@ fn input_tree_surface(scan: &InputScanState, drop_hovering: bool) -> Border {
         .automation_id("reactor-input-tree")
         .into();
 
-    border(scroll_view(tree).height(320.0))
+    border(
+        scroll_view(tree)
+            .min_height(220.0)
+            .vertical_alignment(VerticalAlignment::Stretch),
+    )
+    .vertical_alignment(VerticalAlignment::Stretch)
 }
 
 #[derive(Clone, Copy)]
