@@ -908,7 +908,7 @@ fn input_hierarchy_list(
         })
         .collect::<Vec<Element>>();
 
-    scroll_view(
+    scroll_viewer(
         vstack(row_elements)
             .spacing(8.0)
             .vertical_alignment(VerticalAlignment::Center),
