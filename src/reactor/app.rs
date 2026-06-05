@@ -1,8 +1,16 @@
 use eyre::eyre;
+#[cfg(windows)]
+use std::ffi::OsStr;
 use std::fs;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::thread;
+use std::time::Duration;
+use std::time::Instant;
+#[cfg(windows)]
+use windows::Win32::Foundation::HANDLE;
 #[cfg(windows)]
 use windows::Win32::System::Com::CLSCTX_INPROC_SERVER;
 #[cfg(windows)]
@@ -13,6 +21,22 @@ use windows::Win32::System::Com::CoCreateInstance;
 use windows::Win32::System::Com::CoInitializeEx;
 #[cfg(windows)]
 use windows::Win32::System::Com::CoUninitialize;
+#[cfg(windows)]
+use windows::Win32::System::DataExchange::CloseClipboard;
+#[cfg(windows)]
+use windows::Win32::System::DataExchange::EmptyClipboard;
+#[cfg(windows)]
+use windows::Win32::System::DataExchange::OpenClipboard;
+#[cfg(windows)]
+use windows::Win32::System::DataExchange::SetClipboardData;
+#[cfg(windows)]
+use windows::Win32::System::Memory::GMEM_MOVEABLE;
+#[cfg(windows)]
+use windows::Win32::System::Memory::GlobalAlloc;
+#[cfg(windows)]
+use windows::Win32::System::Memory::GlobalLock;
+#[cfg(windows)]
+use windows::Win32::System::Memory::GlobalUnlock;
 #[cfg(windows)]
 use windows::Win32::UI::Shell::FOS_ALLOWMULTISELECT;
 #[cfg(windows)]
@@ -33,6 +57,20 @@ use windows_reactor::*;
 
 const PICK_FILES_LABEL: &str = "Pick files";
 const PICK_FOLDERS_LABEL: &str = "Pick folders";
+#[cfg(windows)]
+const CF_UNICODETEXT_FORMAT: u32 = 13;
+
+#[cfg(windows)]
+struct ClipboardGuard;
+
+#[cfg(windows)]
+impl Drop for ClipboardGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseClipboard();
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum InitialSurface {
@@ -124,12 +162,21 @@ enum ScanStatus {
     ReadyWithIssues,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RootScanPhase {
+    NotStarted,
+    InProgress,
+    Succeeded,
+    Failed,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct InputScanState {
     generation: u64,
     status: ScanStatus,
-    nodes: Vec<InputTreeNode>,
-    errors: Vec<String>,
+    roots: Vec<InputRootRow>,
+    transitive_entries: Vec<TransitiveInputRow>,
+    issues: Vec<ScanIssue>,
 }
 
 impl InputScanState {
@@ -137,18 +184,42 @@ impl InputScanState {
         Self {
             generation,
             status: ScanStatus::Empty,
-            nodes: Vec::new(),
-            errors: Vec::new(),
+            roots: Vec::new(),
+            transitive_entries: Vec::new(),
+            issues: Vec::new(),
         }
     }
 
-    fn loading(generation: u64) -> Self {
+    fn loading(generation: u64, roots: &[PathBuf]) -> Self {
         Self {
             generation,
             status: ScanStatus::Loading,
-            nodes: Vec::new(),
-            errors: Vec::new(),
+            roots: roots
+                .iter()
+                .cloned()
+                .map(InputRootRow::not_started)
+                .collect(),
+            transitive_entries: Vec::new(),
+            issues: Vec::new(),
         }
+    }
+
+    fn finalize_status(mut self) -> Self {
+        self.status = if self.roots.is_empty() {
+            ScanStatus::Empty
+        } else if self.roots.iter().any(|root| {
+            matches!(
+                root.phase,
+                RootScanPhase::NotStarted | RootScanPhase::InProgress
+            )
+        }) {
+            ScanStatus::Loading
+        } else if self.issues.is_empty() {
+            ScanStatus::Ready
+        } else {
+            ScanStatus::ReadyWithIssues
+        };
+        self
     }
 }
 
@@ -158,57 +229,48 @@ impl Default for InputScanState {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum InputTreeNodeKind {
-    Directory,
-    File,
-    Status,
-}
-
 #[derive(Clone, Debug, PartialEq)]
-struct InputTreeNode {
-    label: String,
-    kind: InputTreeNodeKind,
-    path: Option<PathBuf>,
-    children: Vec<InputTreeNode>,
-    expanded: bool,
+struct InputRootRow {
+    path: PathBuf,
+    phase: RootScanPhase,
+    started_at: Option<Instant>,
+    discovered_count: usize,
+    issue: Option<String>,
 }
 
-impl InputTreeNode {
-    fn directory(label: String, path: PathBuf, children: Vec<Self>, expanded: bool) -> Self {
+impl InputRootRow {
+    fn not_started(path: PathBuf) -> Self {
         Self {
-            label,
-            kind: InputTreeNodeKind::Directory,
-            path: Some(path),
-            children,
-            expanded,
+            path,
+            phase: RootScanPhase::NotStarted,
+            started_at: None,
+            discovered_count: 0,
+            issue: None,
         }
     }
+}
 
-    fn file(label: String, path: PathBuf) -> Self {
-        Self {
-            label,
-            kind: InputTreeNodeKind::File,
-            path: Some(path),
-            children: Vec::new(),
-            expanded: false,
-        }
-    }
-
-    fn status(label: String) -> Self {
-        Self {
-            label,
-            kind: InputTreeNodeKind::Status,
-            path: None,
-            children: Vec::new(),
-            expanded: false,
-        }
-    }
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TransitiveInputRow {
+    path: PathBuf,
+    source_root: PathBuf,
 }
 
 #[derive(Clone, PartialEq)]
 struct AppModeProps {
     set_mode: SetState<AppMode>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ScanIssue {
+    root_path: PathBuf,
+    message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RootScanResult {
+    entries: Vec<TransitiveInputRow>,
+    issue: Option<String>,
 }
 
 pub(crate) fn run(initial_surface: InitialSurface) -> eyre::Result<()> {
@@ -367,7 +429,7 @@ fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
     let scan = if scan.generation == wizard.scan_generation {
         scan
     } else {
-        InputScanState::loading(wizard.scan_generation)
+        InputScanState::loading(wizard.scan_generation, &wizard.selected_root_paths)
     };
     install_drop_handler(
         &wizard,
@@ -608,16 +670,12 @@ fn input_paths_step(
                 PICK_FOLDERS_LABEL => pick_folder_paths(),
                 _ => Vec::new(),
             };
-            append_selected_paths(
-                selected,
-                wizard.clone(),
-                set_wizard.clone(),
-                set_scan.clone(),
-            );
+            append_selected_paths(selected, wizard.clone(), &set_wizard, set_scan.clone());
         }
     };
     let clear_paths = {
         let wizard = wizard.clone();
+        let set_wizard = set_wizard.clone();
         let set_scan = set_scan.clone();
         move || {
             let generation = wizard.scan_generation.saturating_add(1);
@@ -647,38 +705,38 @@ fn input_paths_step(
         .into();
     let toolbar: Element = hstack((add_button, clear_button)).spacing(8.0).into();
     let drop_hint: Element = drop_zone_hint(drop_hovering, has_selected_paths);
-    let status: Element = input_scan_status(&wizard, &scan);
-    let tree_surface: Element = input_tree_surface(&scan, drop_hovering)
-        .border_brush(if drop_hovering {
-            ThemeRef::Accent
-        } else {
-            ThemeRef::AccentSecondary
-        })
-        .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.5 }))
-        .background(if drop_hovering {
-            ThemeRef::SubtleFill
-        } else {
-            ThemeRef::SolidBackground
-        })
-        .corner_radius(10.0)
-        .padding(Thickness::uniform(12.0))
-        .max_width(960.0)
-        .min_height(260.0)
-        .vertical_alignment(VerticalAlignment::Stretch)
-        .into();
+    let status: Element = input_scan_status(&scan);
+    let issue_stack = input_issue_bars(&scan);
+    let columns: Element = grid((
+        selected_inputs_panel(wizard.clone(), set_wizard.clone(), &scan, set_scan.clone())
+            .grid_row(0)
+            .grid_column(0),
+        transitive_inputs_panel(&scan, drop_hovering)
+            .grid_row(0)
+            .grid_column(1),
+    ))
+    .rows([GridLength::Star(1.0)])
+    .columns([GridLength::Star(1.0), GridLength::Star(1.45)])
+    .column_spacing(16.0)
+    .row_spacing(0.0)
+    .min_height(320.0)
+    .vertical_alignment(VerticalAlignment::Stretch)
+    .into();
 
     let content = grid((
         page_header(
             "Pick input paths",
-            "Select image files and folders. Folder descendants are scanned into the tree without changing egui inputs.",
+            "Keep explicit input roots on the left, and let CM gather the transitive files it will process on the right.",
         )
         .grid_row(0),
         toolbar.grid_row(1),
         drop_hint.grid_row(2),
         status.grid_row(3),
-        tree_surface.grid_row(4),
+        issue_stack.grid_row(4),
+        columns.grid_row(5),
     ))
     .rows([
+        GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
@@ -697,21 +755,21 @@ fn drop_zone_hint(drop_hovering: bool, has_selected_paths: bool) -> Element {
     let (title, message, tone, automation_id) = if drop_hovering {
         (
             "Drop to add paths",
-            "Release now to add the dragged files and folders to the input tree.",
+            "Release now to add the dragged files and folders as explicit inputs.",
             InfoBarTone::Success,
             "reactor-drop-hover-indicator",
         )
     } else if has_selected_paths {
         (
             "Drag and drop is ready",
-            "You can still drag more files or folders into the panel below at any time.",
+            "You can still drag more files or folders into the window at any time.",
             InfoBarTone::Informational,
             "reactor-drop-ready-indicator",
         )
     } else {
         (
             "Drop files or folders here",
-            "Drag paths from Explorer into the large panel below, or use Add paths.",
+            "Drag paths from Explorer into the window, or use Add paths.",
             InfoBarTone::Informational,
             "reactor-drop-empty-indicator",
         )
@@ -721,61 +779,6 @@ fn drop_zone_hint(drop_hovering: bool, has_selected_paths: bool) -> Element {
         .max_width(960.0)
         .automation_id(automation_id)
         .into()
-}
-
-fn input_tree_surface(scan: &InputScanState, drop_hovering: bool) -> Border {
-    if scan.nodes.is_empty() {
-        let title = if drop_hovering {
-            "Release to add files and folders"
-        } else {
-            "Drop files or folders here"
-        };
-        let subtitle = if drop_hovering {
-            "CM will add the dropped paths and scan folder descendants into the tree."
-        } else {
-            "This panel is the drop target. Drag from Explorer or use Add paths above."
-        };
-
-        return border(
-            vstack((
-                text_block(title).font_size(22.0).bold(),
-                text_block(subtitle)
-                    .foreground(ThemeRef::SecondaryText)
-                    .font_size(13.0)
-                    .wrap()
-                    .max_width(520.0),
-            ))
-            .spacing(10.0),
-        )
-        .background(if drop_hovering {
-            ThemeRef::SystemSuccessBackground
-        } else {
-            ThemeRef::SubtleFill
-        })
-        .border_brush(if drop_hovering {
-            ThemeRef::SystemSuccess
-        } else {
-            ThemeRef::AccentSecondary
-        })
-        .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.0 }))
-        .corner_radius(8.0)
-        .padding(Thickness::uniform(24.0))
-        .min_height(220.0)
-        .vertical_alignment(VerticalAlignment::Stretch);
-    }
-
-    let tree_nodes = scan.nodes.iter().map(to_tree_node_def).collect::<Vec<_>>();
-    let tree: Element = tree_view(tree_nodes)
-        .selection_mode(TreeSelectionMode::None)
-        .automation_id("reactor-input-tree")
-        .into();
-
-    border(
-        scroll_view(tree)
-            .min_height(220.0)
-            .vertical_alignment(VerticalAlignment::Stretch),
-    )
-    .vertical_alignment(VerticalAlignment::Stretch)
 }
 
 #[derive(Clone, Copy)]
@@ -799,11 +802,11 @@ fn info_bar_with_tone(
     }
 }
 
-fn input_scan_status(wizard: &StudioState, scan: &InputScanState) -> Element {
+fn input_scan_status(scan: &InputScanState) -> Element {
     match scan.status {
         ScanStatus::Empty => info_bar_with_tone(
             "No input paths yet",
-            "Add paths or drop files and folders into the panel below.",
+            "Add explicit roots on the left or drop files and folders into the window.",
             InfoBarTone::Informational,
         )
         .max_width(960.0)
@@ -815,9 +818,9 @@ fn input_scan_status(wizard: &StudioState, scan: &InputScanState) -> Element {
                 .height(18.0)
                 .automation_id("reactor-input-loading"),
             text_block(format!(
-                "Scanning {} selected root{}...",
-                wizard.selected_root_paths.len(),
-                plural_suffix(wizard.selected_root_paths.len())
+                "Gathering descendants for {} explicit root{}...",
+                scan.roots.len(),
+                plural_suffix(scan.roots.len())
             ))
             .font_size(13.0),
         ))
@@ -826,11 +829,13 @@ fn input_scan_status(wizard: &StudioState, scan: &InputScanState) -> Element {
         .automation_id("reactor-input-status")
         .into(),
         ScanStatus::Ready => info_bar_with_tone(
-            "Input tree ready",
+            "Input discovery ready",
             format!(
-                "Showing {} path{} and any scanned folder descendants.",
-                wizard.selected_root_paths.len(),
-                plural_suffix(wizard.selected_root_paths.len())
+                "Resolved {} explicit root{} into {} transitive file{}.",
+                scan.roots.len(),
+                plural_suffix(scan.roots.len()),
+                scan.transitive_entries.len(),
+                plural_suffix(scan.transitive_entries.len())
             ),
             InfoBarTone::Success,
         )
@@ -838,14 +843,378 @@ fn input_scan_status(wizard: &StudioState, scan: &InputScanState) -> Element {
         .automation_id("reactor-input-status")
         .into(),
         ScanStatus::ReadyWithIssues => info_bar_with_tone(
-            "Input tree ready with issues",
-            error_summary(&scan.errors),
+            "Input discovery finished with issues",
+            format!(
+                "{} transitive file{} gathered, with {} root issue{}.",
+                scan.transitive_entries.len(),
+                plural_suffix(scan.transitive_entries.len()),
+                scan.issues.len(),
+                plural_suffix(scan.issues.len())
+            ),
             InfoBarTone::Warning,
         )
         .max_width(960.0)
         .automation_id("reactor-input-status")
         .into(),
     }
+}
+
+fn input_issue_bars(scan: &InputScanState) -> Element {
+    if scan.issues.is_empty() {
+        return Element::Empty;
+    }
+
+    vstack(
+        scan.issues
+            .iter()
+            .enumerate()
+            .map(|(index, issue)| {
+                InfoBar::new(format!("Could not scan {}", issue.root_path.display()))
+                    .message(issue.message.clone())
+                    .error()
+                    .is_closable(false)
+                    .automation_id(format!("reactor-input-issue-{index}"))
+                    .into()
+            })
+            .collect::<Vec<Element>>(),
+    )
+    .spacing(8.0)
+    .into()
+}
+
+fn selected_inputs_panel(
+    wizard: StudioState,
+    set_wizard: SetState<StudioState>,
+    scan: &InputScanState,
+    set_scan: AsyncSetState<InputScanState>,
+) -> Element {
+    let rows = scan.roots.clone();
+    let body: Element = if rows.is_empty() {
+        panel_placeholder(
+            "No explicit inputs yet",
+            "Add paths or drop files and folders into the window to build the input set.",
+        )
+        .automation_id("reactor-selected-inputs-empty")
+        .into()
+    } else {
+        list_view(rows, move |row, _| {
+            let detail = input_root_row_detail(row);
+            let remove_path = row.path.clone();
+            let remove_row = {
+                let wizard = wizard.clone();
+                let set_wizard = set_wizard.clone();
+                let set_scan = set_scan.clone();
+                move || {
+                    remove_selected_path(
+                        &remove_path,
+                        wizard.clone(),
+                        &set_wizard,
+                        set_scan.clone(),
+                    );
+                }
+            };
+
+            let status_button: Element = button(" ")
+                .subtle()
+                .icon(root_status_glyph(row.phase))
+                .tooltip(detail.clone())
+                .on_click(move || {
+                    let _ = copy_text_to_clipboard(&detail);
+                })
+                .width(36.0)
+                .height(36.0)
+                .automation_name(format!("Copy status for {}", row.path.display()))
+                .into();
+            let remove_button: Element = button(" ")
+                .subtle()
+                .icon(SymbolGlyph::Delete)
+                .tooltip(format!("Remove {}", row.path.display()))
+                .on_click(remove_row)
+                .width(36.0)
+                .height(36.0)
+                .automation_name(format!("Remove {}", row.path.display()))
+                .into();
+
+            border(
+                grid((
+                    status_button.grid_row(0).grid_column(0),
+                    vstack((
+                        text_block(row.path.display().to_string())
+                            .wrap()
+                            .font_size(13.0),
+                        text_block(root_status_summary(row))
+                            .foreground(ThemeRef::SecondaryText)
+                            .font_size(12.0)
+                            .wrap(),
+                    ))
+                    .spacing(4.0)
+                    .grid_row(0)
+                    .grid_column(1),
+                    remove_button.grid_row(0).grid_column(2),
+                ))
+                .rows([GridLength::Auto])
+                .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
+                .column_spacing(8.0),
+            )
+            .background(ThemeRef::SubtleFill)
+            .border_brush(ThemeRef::CardStroke)
+            .border_thickness(Thickness::uniform(1.0))
+            .corner_radius(8.0)
+            .padding(Thickness::uniform(10.0))
+            .margin(Thickness::uniform(0.0))
+        })
+        .with_key_selector(|row| row.path.to_string_lossy().into_owned())
+        .selection_mode(SelectionMode::None)
+        .build()
+        .automation_id("reactor-selected-inputs-list")
+    };
+
+    panel_shell(
+        "Explicit input paths",
+        "Each row is a root that CM will resolve into transitive files.",
+        body,
+    )
+}
+
+fn transitive_inputs_panel(scan: &InputScanState, drop_hovering: bool) -> Element {
+    let summary: Element = transitive_status_bar(scan).into();
+    let body: Element = if scan.transitive_entries.is_empty() {
+        empty_transitive_surface(drop_hovering)
+            .automation_id("reactor-transitive-inputs-empty")
+            .into()
+    } else {
+        list_view(scan.transitive_entries.clone(), move |entry, _| {
+            border(
+                vstack((
+                    text_block(entry.path.display().to_string())
+                        .wrap()
+                        .font_size(13.0),
+                    text_block(format!("From {}", entry.source_root.display()))
+                        .foreground(ThemeRef::SecondaryText)
+                        .font_size(12.0)
+                        .wrap(),
+                ))
+                .spacing(4.0),
+            )
+            .background(ThemeRef::SubtleFill)
+            .border_brush(ThemeRef::CardStroke)
+            .border_thickness(Thickness::uniform(1.0))
+            .corner_radius(8.0)
+            .padding(Thickness::uniform(10.0))
+        })
+        .with_key_selector(|entry| entry.path.to_string_lossy().into_owned())
+        .selection_mode(SelectionMode::None)
+        .build()
+        .automation_id("reactor-transitive-inputs-list")
+    };
+
+    panel_shell(
+        "Discovered transitive inputs",
+        "Files gathered from the explicit roots. Directory roots contribute descendant files here.",
+        vstack((summary, body)).spacing(12.0),
+    )
+}
+
+fn panel_shell(title: &str, subtitle: &str, body: impl Into<Element>) -> Element {
+    border(
+        grid((
+            vstack((
+                text_block(title).font_size(16.0).semibold(),
+                text_block(subtitle)
+                    .foreground(ThemeRef::SecondaryText)
+                    .font_size(12.0)
+                    .wrap(),
+            ))
+            .spacing(6.0)
+            .grid_row(0)
+            .grid_column(0),
+            body.into().grid_row(1).grid_column(0),
+        ))
+        .rows([GridLength::Auto, GridLength::Star(1.0)])
+        .columns([GridLength::Star(1.0)])
+        .row_spacing(12.0),
+    )
+    .background(ThemeRef::SolidBackground)
+    .border_brush(ThemeRef::AccentSecondary)
+    .border_thickness(Thickness::uniform(1.25))
+    .corner_radius(12.0)
+    .padding(Thickness::uniform(14.0))
+    .min_height(320.0)
+    .vertical_alignment(VerticalAlignment::Stretch)
+    .into()
+}
+
+fn panel_placeholder(title: &str, subtitle: &str) -> Border {
+    border(
+        vstack((
+            text_block(title).font_size(20.0).bold(),
+            text_block(subtitle)
+                .foreground(ThemeRef::SecondaryText)
+                .font_size(13.0)
+                .wrap()
+                .max_width(360.0),
+        ))
+        .spacing(10.0)
+        .horizontal_alignment(HorizontalAlignment::Center)
+        .vertical_alignment(VerticalAlignment::Center),
+    )
+    .background(ThemeRef::SubtleFill)
+    .border_brush(ThemeRef::AccentSecondary)
+    .border_thickness(Thickness::uniform(1.0))
+    .corner_radius(8.0)
+    .padding(Thickness::uniform(18.0))
+    .min_height(220.0)
+    .vertical_alignment(VerticalAlignment::Stretch)
+}
+
+fn empty_transitive_surface(drop_hovering: bool) -> Border {
+    let title = if drop_hovering {
+        "Release to add files and folders"
+    } else {
+        "Drop files or folders here"
+    };
+    let subtitle = if drop_hovering {
+        "CM will add the dropped paths as explicit inputs and keep scanning descendants into this list."
+    } else {
+        "This panel reflects the transitive files CM will process after it resolves the explicit roots."
+    };
+
+    border(
+        vstack((
+            text_block(title).font_size(22.0).bold(),
+            text_block(subtitle)
+                .foreground(ThemeRef::SecondaryText)
+                .font_size(13.0)
+                .wrap()
+                .max_width(440.0),
+        ))
+        .spacing(10.0)
+        .horizontal_alignment(HorizontalAlignment::Center)
+        .vertical_alignment(VerticalAlignment::Center),
+    )
+    .background(if drop_hovering {
+        ThemeRef::SystemSuccessBackground
+    } else {
+        ThemeRef::SubtleFill
+    })
+    .border_brush(if drop_hovering {
+        ThemeRef::SystemSuccess
+    } else {
+        ThemeRef::AccentSecondary
+    })
+    .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.0 }))
+    .corner_radius(8.0)
+    .padding(Thickness::uniform(20.0))
+    .min_height(220.0)
+    .vertical_alignment(VerticalAlignment::Stretch)
+}
+
+fn transitive_status_bar(scan: &InputScanState) -> InfoBar {
+    match scan.status {
+        ScanStatus::Empty => InfoBar::new("No transitive inputs yet")
+            .message("Once you add a root, CM will enumerate descendant files here.")
+            .informational()
+            .is_closable(false),
+        ScanStatus::Loading => {
+            let completed = scan
+                .roots
+                .iter()
+                .filter(|root| {
+                    matches!(root.phase, RootScanPhase::Succeeded | RootScanPhase::Failed)
+                })
+                .count();
+            InfoBar::new("Gathering descendants")
+                .message(format!(
+                    "Finished {} of {} roots so far. {} transitive file{} discovered.",
+                    completed,
+                    scan.roots.len(),
+                    scan.transitive_entries.len(),
+                    plural_suffix(scan.transitive_entries.len())
+                ))
+                .informational()
+                .is_closable(false)
+        }
+        ScanStatus::Ready => InfoBar::new("Transitive input list ready")
+            .message(format!(
+                "{} file{} discovered from {} explicit root{}.",
+                scan.transitive_entries.len(),
+                plural_suffix(scan.transitive_entries.len()),
+                scan.roots.len(),
+                plural_suffix(scan.roots.len())
+            ))
+            .success()
+            .is_closable(false),
+        ScanStatus::ReadyWithIssues => InfoBar::new("Transitive input list ready with issues")
+            .message(format!(
+                "{} file{} discovered, with {} scan issue{} to review on the left.",
+                scan.transitive_entries.len(),
+                plural_suffix(scan.transitive_entries.len()),
+                scan.issues.len(),
+                plural_suffix(scan.issues.len())
+            ))
+            .warning()
+            .is_closable(false),
+    }
+}
+
+fn root_status_glyph(phase: RootScanPhase) -> SymbolGlyph {
+    match phase {
+        RootScanPhase::NotStarted => SymbolGlyph::Help,
+        RootScanPhase::InProgress => SymbolGlyph::Sync,
+        RootScanPhase::Succeeded => SymbolGlyph::Accept,
+        RootScanPhase::Failed => SymbolGlyph::Cancel,
+    }
+}
+
+fn root_status_summary(row: &InputRootRow) -> String {
+    match row.phase {
+        RootScanPhase::NotStarted => "Waiting to scan descendants.".to_string(),
+        RootScanPhase::InProgress => {
+            if let Some(started_at) = row.started_at {
+                format!(
+                    "Scanning descendants. Running for {}.",
+                    format_duration(started_at.elapsed())
+                )
+            } else {
+                "Scanning descendants.".to_string()
+            }
+        }
+        RootScanPhase::Succeeded => format!(
+            "{} transitive file{} discovered.",
+            row.discovered_count,
+            plural_suffix(row.discovered_count)
+        ),
+        RootScanPhase::Failed => row
+            .issue
+            .clone()
+            .unwrap_or_else(|| "Scanning failed.".to_string()),
+    }
+}
+
+fn input_root_row_detail(row: &InputRootRow) -> String {
+    let state = match row.phase {
+        RootScanPhase::NotStarted => "Not started".to_string(),
+        RootScanPhase::InProgress => {
+            let elapsed = row.started_at.map_or_else(
+                || "unknown time".to_string(),
+                |started_at| format_duration(started_at.elapsed()),
+            );
+            format!("In progress for {elapsed}")
+        }
+        RootScanPhase::Succeeded => format!(
+            "Succeeded with {} transitive file{}",
+            row.discovered_count,
+            plural_suffix(row.discovered_count)
+        ),
+        RootScanPhase::Failed => format!(
+            "Failed: {}",
+            row.issue
+                .clone()
+                .unwrap_or_else(|| "Unknown error".to_string())
+        ),
+    };
+
+    format!("{}\nStatus: {state}", row.path.display())
 }
 
 fn placeholder_step(
@@ -892,25 +1261,16 @@ fn install_drop_handler(
     let wizard = wizard.clone();
     let drop_handler = Callback::new(move |paths: Vec<String>| {
         let selected = paths.into_iter().map(PathBuf::from).collect();
-        append_selected_paths(
-            selected,
-            wizard.clone(),
-            set_wizard.clone(),
-            set_scan.clone(),
-        );
+        append_selected_paths(selected, wizard.clone(), &set_wizard, set_scan.clone());
     });
     let hover_handler = Callback::new(move |hovering| set_drop_hovering.call(hovering));
     set_window_file_drop_handlers(Some(drop_handler), Some(hover_handler));
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "state handles are moved into async follow-up work"
-)]
 fn append_selected_paths(
     selected: Vec<PathBuf>,
     wizard: StudioState,
-    set_wizard: SetState<StudioState>,
+    set_wizard: &SetState<StudioState>,
     set_scan: AsyncSetState<InputScanState>,
 ) {
     if selected.is_empty() {
@@ -928,122 +1288,231 @@ fn append_selected_paths(
         return;
     }
 
+    replace_selected_paths(roots, wizard, set_wizard, set_scan);
+}
+
+fn remove_selected_path(
+    target: &Path,
+    wizard: StudioState,
+    set_wizard: &SetState<StudioState>,
+    set_scan: AsyncSetState<InputScanState>,
+) {
+    let roots = wizard
+        .selected_root_paths
+        .iter()
+        .filter(|path| !same_path(path, target))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if roots.len() == wizard.selected_root_paths.len() {
+        return;
+    }
+
+    replace_selected_paths(roots, wizard, set_wizard, set_scan);
+}
+
+fn replace_selected_paths(
+    roots: Vec<PathBuf>,
+    wizard: StudioState,
+    set_wizard: &SetState<StudioState>,
+    set_scan: AsyncSetState<InputScanState>,
+) {
     let generation = wizard.scan_generation.saturating_add(1);
     let mut next = wizard;
     next.selected_root_paths.clone_from(&roots);
     next.scan_generation = generation;
     set_wizard.call(next);
-    set_scan.call(InputScanState::loading(generation));
+
+    if roots.is_empty() {
+        set_scan.call(InputScanState::empty(generation));
+        return;
+    }
+
+    set_scan.call(InputScanState::loading(generation, &roots));
     start_input_scan(generation, roots, set_scan);
 }
 
 fn start_input_scan(generation: u64, roots: Vec<PathBuf>, set_scan: AsyncSetState<InputScanState>) {
     thread::spawn(move || {
-        set_scan.call(scan_roots(generation, &roots));
+        scan_roots_with_progress(generation, &roots, |state| {
+            set_scan.call(state.clone());
+        });
     });
 }
 
+#[cfg(test)]
 fn scan_roots(generation: u64, roots: &[PathBuf]) -> InputScanState {
     if roots.is_empty() {
         return InputScanState::empty(generation);
     }
 
-    let mut errors = Vec::new();
-    let nodes = roots
-        .iter()
-        .map(|path| scan_path(path, true, &mut errors))
-        .collect::<Vec<_>>();
-    let status = if errors.is_empty() {
+    scan_roots_with_progress(generation, roots, |_| {})
+}
+
+fn scan_roots_with_progress(
+    generation: u64,
+    roots: &[PathBuf],
+    mut on_update: impl FnMut(&InputScanState),
+) -> InputScanState {
+    let mut state = InputScanState::loading(generation, roots);
+    on_update(&state);
+
+    for root_path in roots {
+        mark_root_in_progress(&mut state, root_path);
+        on_update(&state);
+
+        let result = scan_root(root_path);
+        apply_root_scan_result(&mut state, root_path, result);
+        on_update(&state);
+    }
+
+    state.finalize_status()
+}
+
+fn mark_root_in_progress(state: &mut InputScanState, root_path: &Path) {
+    if let Some(root) = state
+        .roots
+        .iter_mut()
+        .find(|row| same_path(&row.path, root_path))
+    {
+        root.phase = RootScanPhase::InProgress;
+        root.started_at = Some(Instant::now());
+        root.issue = None;
+        root.discovered_count = 0;
+    }
+}
+
+fn apply_root_scan_result(state: &mut InputScanState, root_path: &Path, result: RootScanResult) {
+    let discovered_count = result.entries.len();
+    if let Some(root) = state
+        .roots
+        .iter_mut()
+        .find(|row| same_path(&row.path, root_path))
+    {
+        root.phase = if result.issue.is_some() {
+            RootScanPhase::Failed
+        } else {
+            RootScanPhase::Succeeded
+        };
+        root.discovered_count = discovered_count;
+        root.issue.clone_from(&result.issue);
+    }
+
+    if let Some(issue) = result.issue {
+        state.issues.push(ScanIssue {
+            root_path: root_path.to_path_buf(),
+            message: issue,
+        });
+    } else {
+        state.transitive_entries.extend(result.entries);
+        sort_transitive_entries(&mut state.transitive_entries);
+    }
+
+    state.status = if state.roots.iter().any(|root| {
+        matches!(
+            root.phase,
+            RootScanPhase::NotStarted | RootScanPhase::InProgress
+        )
+    }) {
+        ScanStatus::Loading
+    } else if state.issues.is_empty() {
         ScanStatus::Ready
     } else {
         ScanStatus::ReadyWithIssues
     };
-
-    InputScanState {
-        generation,
-        status,
-        nodes,
-        errors,
-    }
 }
 
-fn scan_path(path: &Path, is_root: bool, errors: &mut Vec<String>) -> InputTreeNode {
-    let label = if is_root {
-        path.display().to_string()
-    } else {
-        path_label(path)
-    };
-
-    let metadata = match fs::symlink_metadata(path) {
+fn scan_root(root_path: &Path) -> RootScanResult {
+    let metadata = match fs::symlink_metadata(root_path) {
         Ok(metadata) => metadata,
         Err(error) => {
-            errors.push(format!("{}: {error}", path.display()));
-            return InputTreeNode::directory(
-                label,
-                path.to_path_buf(),
-                vec![InputTreeNode::status(format!("Could not inspect: {error}"))],
-                true,
-            );
+            return RootScanResult {
+                entries: Vec::new(),
+                issue: Some(format!(
+                    "Could not inspect {}: {error}",
+                    root_path.display()
+                )),
+            };
         }
     };
 
     if metadata.is_file() {
-        return InputTreeNode::file(label, path.to_path_buf());
+        return RootScanResult {
+            entries: vec![TransitiveInputRow {
+                path: root_path.to_path_buf(),
+                source_root: root_path.to_path_buf(),
+            }],
+            issue: None,
+        };
     }
 
-    if !metadata.is_dir() {
-        return InputTreeNode::file(label, path.to_path_buf());
+    if metadata.is_dir() {
+        let mut entries = Vec::new();
+        if let Err(error) = collect_descendant_files(root_path, root_path, &mut entries) {
+            return RootScanResult {
+                entries: Vec::new(),
+                issue: Some(error),
+            };
+        }
+        sort_transitive_entries(&mut entries);
+        return RootScanResult {
+            entries,
+            issue: None,
+        };
     }
 
-    let children = match fs::read_dir(path) {
-        Ok(entries) => {
-            let mut children = entries
-                .map(|entry| match entry {
-                    Ok(entry) => scan_path(&entry.path(), false, errors),
-                    Err(error) => {
-                        errors.push(format!("{}: {error}", path.display()));
-                        InputTreeNode::status(format!("Could not read entry: {error}"))
-                    }
-                })
-                .collect::<Vec<_>>();
-            sort_tree_nodes(&mut children);
-            children
-        }
-        Err(error) => {
-            errors.push(format!("{}: {error}", path.display()));
-            vec![InputTreeNode::status(format!(
-                "Could not read folder: {error}"
-            ))]
-        }
-    };
-
-    InputTreeNode::directory(label, path.to_path_buf(), children, true)
+    RootScanResult {
+        entries: vec![TransitiveInputRow {
+            path: root_path.to_path_buf(),
+            source_root: root_path.to_path_buf(),
+        }],
+        issue: None,
+    }
 }
 
-fn sort_tree_nodes(nodes: &mut [InputTreeNode]) {
-    nodes.sort_by(|a, b| {
-        a.kind
-            .cmp(&b.kind)
-            .then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase()))
+fn collect_descendant_files(
+    current: &Path,
+    root_path: &Path,
+    entries: &mut Vec<TransitiveInputRow>,
+) -> std::result::Result<(), String> {
+    let dir_entries = fs::read_dir(current)
+        .map_err(|error| format!("Could not read {}: {error}", current.display()))?;
+
+    for entry_result in dir_entries {
+        let entry = entry_result.map_err(|error| {
+            format!("Could not read an entry in {}: {error}", current.display())
+        })?;
+        let path = entry.path();
+        let metadata = entry
+            .metadata()
+            .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+
+        if metadata.is_dir() {
+            collect_descendant_files(&path, root_path, entries)?;
+        } else {
+            entries.push(TransitiveInputRow {
+                path,
+                source_root: root_path.to_path_buf(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn sort_transitive_entries(entries: &mut [TransitiveInputRow]) {
+    entries.sort_by(|left, right| {
+        left.path
+            .to_string_lossy()
+            .to_lowercase()
+            .cmp(&right.path.to_string_lossy().to_lowercase())
+            .then_with(|| {
+                left.source_root
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .cmp(&right.source_root.to_string_lossy().to_lowercase())
+            })
     });
-}
-
-fn to_tree_node_def(node: &InputTreeNode) -> TreeNodeDef {
-    let mut def = tree_node(node.label.clone());
-    if node.expanded {
-        def = def.expanded();
-    }
-    if !node.children.is_empty() {
-        def = def.children(node.children.iter().map(to_tree_node_def).collect());
-    }
-    def
-}
-
-fn path_label(path: &Path) -> String {
-    path.file_name().map_or_else(
-        || path.display().to_string(),
-        |name| name.to_string_lossy().into_owned(),
-    )
 }
 
 fn same_path(left: &Path, right: &Path) -> bool {
@@ -1059,16 +1528,65 @@ fn plural_suffix(count: usize) -> &'static str {
     if count == 1 { "" } else { "s" }
 }
 
-fn error_summary(errors: &[String]) -> String {
-    match errors {
-        [] => "No scan errors.".to_string(),
-        [one] => one.clone(),
-        [first, rest @ ..] => format!(
-            "{first} and {} more issue{}.",
-            rest.len(),
-            plural_suffix(rest.len())
-        ),
+fn format_duration(duration: Duration) -> String {
+    if duration.as_secs() >= 60 {
+        format!("{}m {}s", duration.as_secs() / 60, duration.as_secs() % 60)
+    } else if duration.as_secs() >= 1 {
+        format!("{}s", duration.as_secs())
+    } else {
+        format!("{}ms", duration.as_millis())
     }
+}
+
+#[cfg(windows)]
+fn copy_text_to_clipboard(text: &str) -> std::result::Result<(), String> {
+    let encoded = OsStr::new(text)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<u16>>();
+    let byte_len = encoded.len() * std::mem::size_of::<u16>();
+
+    unsafe {
+        OpenClipboard(None).map_err(|error| format!("Could not open clipboard: {error}"))?;
+    }
+    let _clipboard_guard = ClipboardGuard;
+
+    unsafe {
+        EmptyClipboard().map_err(|error| format!("Could not clear clipboard: {error}"))?;
+    }
+
+    let memory = unsafe {
+        GlobalAlloc(GMEM_MOVEABLE, byte_len)
+            .map_err(|error| format!("Could not allocate clipboard memory: {error}"))?
+    };
+    if memory.is_invalid() {
+        return Err("Could not allocate clipboard memory.".to_string());
+    }
+
+    let locked = unsafe { GlobalLock(memory) };
+    if locked.is_null() {
+        return Err("Could not lock clipboard memory.".to_string());
+    }
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(encoded.as_ptr().cast::<u8>(), locked.cast::<u8>(), byte_len);
+    }
+
+    unsafe {
+        let _ = GlobalUnlock(memory);
+    }
+
+    unsafe {
+        SetClipboardData(CF_UNICODETEXT_FORMAT, Some(HANDLE(memory.0)))
+            .map_err(|error| format!("Could not set clipboard contents: {error}"))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn copy_text_to_clipboard(_text: &str) -> std::result::Result<(), String> {
+    Err("Clipboard copy is only available on Windows.".to_string())
 }
 
 fn theme_toggle_button(is_dark: bool) -> Button {
@@ -1124,7 +1642,7 @@ fn studio_drop_overlay(drop_hovering: bool) -> Element {
                     .bold()
                     .horizontal_alignment(HorizontalAlignment::Center),
                 text_block(
-                    "Release now to add the dragged paths. CM will keep scanning folder descendants into the input tree.",
+                    "Release now to add the dragged paths. CM will keep scanning folder descendants into the transitive input list.",
                 )
                 .foreground(ThemeRef::SecondaryText)
                 .font_size(14.0)
@@ -1281,8 +1799,8 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     #[test]
-    fn scan_roots_builds_directory_tree_with_descendants() {
-        let root = temp_test_dir("reactor_scan_tree");
+    fn scan_roots_collects_descendant_files_for_directories() {
+        let root = temp_test_dir("reactor_scan_flattened");
         fs::create_dir_all(root.join("nested")).unwrap();
         fs::write(root.join("top.txt"), "top").unwrap();
         fs::write(root.join("nested").join("child.txt"), "child").unwrap();
@@ -1291,29 +1809,52 @@ mod tests {
 
         assert_eq!(scan.generation, 42);
         assert_eq!(scan.status, ScanStatus::Ready);
-        assert_eq!(scan.nodes.len(), 1);
-        let root_node = &scan.nodes[0];
-        assert_eq!(root_node.kind, InputTreeNodeKind::Directory);
-        assert!(root_node.children.iter().any(|node| node.label == "nested"));
+        assert_eq!(scan.roots.len(), 1);
+        assert_eq!(scan.roots[0].phase, RootScanPhase::Succeeded);
+        assert_eq!(scan.roots[0].discovered_count, 2);
+        assert_eq!(scan.transitive_entries.len(), 2);
         assert!(
-            root_node
-                .children
+            scan.transitive_entries
                 .iter()
-                .any(|node| node.label == "top.txt")
+                .any(|entry| entry.path.ends_with("top.txt"))
+        );
+        assert!(
+            scan.transitive_entries
+                .iter()
+                .any(|entry| entry.path.ends_with("child.txt"))
         );
 
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn scan_roots_keeps_missing_root_as_status_child() {
+    fn scan_roots_marks_missing_root_as_failed() {
         let root = temp_test_dir("reactor_missing_root");
         let scan = scan_roots(7, std::slice::from_ref(&root));
 
         assert_eq!(scan.status, ScanStatus::ReadyWithIssues);
-        assert_eq!(scan.nodes.len(), 1);
-        assert_eq!(scan.nodes[0].kind, InputTreeNodeKind::Directory);
-        assert_eq!(scan.nodes[0].children[0].kind, InputTreeNodeKind::Status);
+        assert_eq!(scan.roots.len(), 1);
+        assert_eq!(scan.roots[0].phase, RootScanPhase::Failed);
+        assert_eq!(scan.issues.len(), 1);
+        assert!(scan.transitive_entries.is_empty());
+    }
+
+    #[test]
+    fn scan_roots_keeps_file_roots_as_transitive_entries() {
+        let root = temp_test_dir("reactor_file_root");
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("single.webp");
+        fs::write(&file, "file").unwrap();
+
+        let scan = scan_roots(9, std::slice::from_ref(&file));
+
+        assert_eq!(scan.status, ScanStatus::Ready);
+        assert_eq!(scan.roots.len(), 1);
+        assert_eq!(scan.roots[0].phase, RootScanPhase::Succeeded);
+        assert_eq!(scan.transitive_entries.len(), 1);
+        assert_eq!(scan.transitive_entries[0].path, file);
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn temp_test_dir(prefix: &str) -> PathBuf {
