@@ -47,7 +47,10 @@ pub fn run_gui() -> eyre::Result<()> {
     // Create a dedicated runtime and run the GUI
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let native_options = eframe::NativeOptions::default();
+        let native_options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default().with_icon(egui::IconData::default()),
+            ..eframe::NativeOptions::default()
+        };
 
         let res = tokio::task::block_in_place(move || {
             eframe::run_native(
