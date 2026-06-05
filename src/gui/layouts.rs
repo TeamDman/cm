@@ -35,26 +35,34 @@ impl Layout {
     }
 
     pub fn apply_to_tree(&self, tree_id: impl Into<Id>) -> Tree<CmPane> {
-        fn build(node: &Node, tiles: &mut egui_tiles::Tiles<CmPane>) -> egui_tiles::TileId {
+        fn build(
+            node: &Node,
+            tiles: &mut egui_tiles::Tiles<CmPane>,
+        ) -> Option<egui_tiles::TileId> {
             if node.variant == "Pane" {
                 let pane_str = node.pane.as_deref().unwrap_or("InputPaths");
+                if pane_str == "ProductSearch" {
+                    // Intentionally hidden until product search is repaired, including
+                    // when restoring older saved layouts or presets.
+                    return None;
+                }
                 let pane_obj = CmPane::from_key(pane_str).unwrap_or(CmPane::InputPaths);
-                tiles.insert_pane(pane_obj)
+                Some(tiles.insert_pane(pane_obj))
             } else {
                 let children = node.children.as_deref().unwrap_or(&[]);
                 let child_ids: Vec<egui_tiles::TileId> =
-                    children.iter().map(|c| build(c, tiles)).collect();
-                match node.kind.as_deref().unwrap_or("Tabs") {
+                    children.iter().filter_map(|c| build(c, tiles)).collect();
+                Some(match node.kind.as_deref().unwrap_or("Tabs") {
                     "Horizontal" => tiles.insert_horizontal_tile(child_ids),
                     "Vertical" => tiles.insert_vertical_tile(child_ids),
                     "Grid" => tiles.insert_grid_tile(child_ids),
                     _ => tiles.insert_tab_tile(child_ids),
-                }
+                })
             }
         }
 
         let mut tiles = egui_tiles::Tiles::default();
-        let root = build(&self.root, &mut tiles);
+        let root = build(&self.root, &mut tiles).unwrap_or_else(|| tiles.insert_tab_tile(vec![]));
         Tree::new(tree_id, root, tiles)
     }
 }

@@ -139,6 +139,8 @@ impl egui_tiles::Behavior<CmPane> for CmBehavior<'_> {
                 self.output_pan_zoom,
             ),
             CmPane::ImageDescription => tiles::draw_image_description_tile(ui, self.state),
+            // Intentionally retained for compatibility with older saved layouts,
+            // but hidden from the default app layout until search is fixed.
             CmPane::ProductSearch => tiles::draw_product_search_tile(ui, self.state),
         }
 
@@ -177,7 +179,6 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
     let threshold_preview_id = tiles.insert_pane(CmPane::ThresholdPreview);
     let output_image_preview_id = tiles.insert_pane(CmPane::OutputImagePreview);
     let image_description_id = tiles.insert_pane(CmPane::ImageDescription);
-    let product_search_id = tiles.insert_pane(CmPane::ProductSearch);
 
     // Left column: Input Paths + Input Images (vertical)
     let left_column = tiles.insert_vertical_tile(vec![input_paths_id, input_images_id]);
@@ -189,13 +190,13 @@ pub fn create_default_tree() -> egui_tiles::Tree<CmPane> {
         output_image_preview_id,
     ]);
 
-    // Middle column: Settings (Image Manipulation + Rename Rules + Max Name Length + Image Description + Product Search)
+    // Middle column: Settings. Product Search is intentionally hidden from the
+    // default layout until that flow is repaired.
     let settings_column = tiles.insert_vertical_tile(vec![
         image_manipulation_id,
         rename_rules_id,
         max_name_length_id,
         image_description_id,
-        product_search_id,
     ]);
 
     // Right column: Output Preview
