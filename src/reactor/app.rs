@@ -427,10 +427,6 @@ fn main_menu(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         .into()
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "UI layout is easier to maintain as one builder function"
-)]
 fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
     let is_dark = matches!(cx.use_color_scheme(), ColorScheme::Dark);
     let (wizard, set_wizard) = cx.use_state(StudioState::default());
@@ -512,7 +508,6 @@ fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         .on_selection_changed(on_step_changed)
         .pane_display_mode(NavViewPaneDisplayMode::Left)
         .pane_open(is_pane_open)
-        .pane_title("Reactor Studio")
         .settings_visible(false)
         .pane_toggle_button_visible(false)
         .back_button_visible(false)
@@ -523,8 +518,7 @@ fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         let set_mode = props.set_mode.clone();
         move || set_mode.call(AppMode::MainMenu)
     };
-    let title_bar = TitleBar::new("CM Reactor Shell")
-        .subtitle("Reactor Studio")
+    let title_bar = TitleBar::new("Teamy CM Studio")
         .pane_toggle_button_visible(true)
         .back_button_visible(true)
         .back_button_enabled(true)
@@ -532,7 +526,7 @@ fn studio(props: &AppModeProps, cx: &mut RenderCx) -> Element {
         .on_pane_toggle_requested(move || set_pane_open.call(!is_pane_open))
         .footer(theme_toggle_button(is_dark))
         .tall(true);
-    let drop_overlay = studio_drop_overlay(drop_hovering);
+    let drop_overlay = studio_drop_overlay(drop_hovering && wizard.selected_root_paths.is_empty());
 
     grid((title_bar.grid_row(0), navigation.grid_row(1), drop_overlay))
         .rows([GridLength::Auto, GridLength::Star(1.0)])
@@ -905,14 +899,22 @@ fn input_hierarchy_list(
     let set_wizard = set_wizard.clone();
     let set_scan = set_scan.clone();
 
-    list_view(rows, move |row, _| {
-        let descendants = descendants_for_root(&all_entries, row);
-        input_root_hierarchy_row(row, &descendants, &wizard, &set_wizard, &set_scan)
-    })
-    .with_key_selector(|row| row.path.to_string_lossy().into_owned())
-    .selection_mode(SelectionMode::None)
-    .build()
+    let row_elements = rows
+        .iter()
+        .map(|row| {
+            let descendants = descendants_for_root(&all_entries, row);
+            input_root_hierarchy_row(row, &descendants, &wizard, &set_wizard, &set_scan)
+                .with_key(row.path.to_string_lossy().into_owned())
+        })
+        .collect::<Vec<Element>>();
+
+    scroll_view(
+        vstack(row_elements)
+            .spacing(8.0)
+            .vertical_alignment(VerticalAlignment::Center),
+    )
     .automation_id("reactor-input-hierarchy-list")
+    .into()
 }
 
 fn input_root_hierarchy_row(
@@ -958,24 +960,22 @@ fn input_root_row_header(
     detail: String,
     remove_row: impl Fn() + 'static,
 ) -> Element {
-    let status_button: Element = button(" ")
+    let status_button: Element = button(root_status_button_label(row.phase))
         .subtle()
         .icon(root_status_glyph(row.phase))
         .tooltip(detail.clone())
         .on_click(move || {
             let _ = copy_text_to_clipboard(&detail);
         })
-        .width(32.0)
-        .height(32.0)
+        .min_width(92.0)
         .automation_name(format!("Copy status for {}", row.path.display()))
         .into();
-    let remove_button: Element = button(" ")
+    let remove_button: Element = button("Delete")
         .subtle()
         .icon(SymbolGlyph::Delete)
         .tooltip(format!("Remove {}", row.path.display()))
         .on_click(remove_row)
-        .width(40.0)
-        .height(40.0)
+        .min_width(88.0)
         .automation_name(format!("Remove {}", row.path.display()))
         .into();
 
@@ -997,12 +997,17 @@ fn input_root_row_header(
 
     grid((
         status_button.grid_row(0).grid_column(0),
-        vstack(children).spacing(4.0).grid_row(0).grid_column(1),
+        vstack(children)
+            .spacing(4.0)
+            .vertical_alignment(VerticalAlignment::Center)
+            .grid_row(0)
+            .grid_column(1),
         remove_button.grid_row(0).grid_column(2),
     ))
     .rows([GridLength::Auto])
     .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
     .column_spacing(10.0)
+    .vertical_alignment(VerticalAlignment::Center)
     .into()
 }
 
@@ -1114,6 +1119,15 @@ fn root_status_glyph(phase: RootScanPhase) -> SymbolGlyph {
         RootScanPhase::InProgress => SymbolGlyph::Sync,
         RootScanPhase::Succeeded => SymbolGlyph::Accept,
         RootScanPhase::Failed => SymbolGlyph::Cancel,
+    }
+}
+
+fn root_status_button_label(phase: RootScanPhase) -> &'static str {
+    match phase {
+        RootScanPhase::NotStarted => "Pending",
+        RootScanPhase::InProgress => "Scanning",
+        RootScanPhase::Succeeded => "Ready",
+        RootScanPhase::Failed => "Issue",
     }
 }
 
