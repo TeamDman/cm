@@ -170,6 +170,13 @@ enum RootScanPhase {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InputRootKind {
+    Unknown,
+    File,
+    Directory,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct InputScanState {
     generation: u64,
@@ -232,6 +239,7 @@ impl Default for InputScanState {
 #[derive(Clone, Debug, PartialEq)]
 struct InputRootRow {
     path: PathBuf,
+    kind: InputRootKind,
     phase: RootScanPhase,
     started_at: Option<Instant>,
     discovered_count: usize,
@@ -240,8 +248,10 @@ struct InputRootRow {
 
 impl InputRootRow {
     fn not_started(path: PathBuf) -> Self {
+        let kind = detect_root_kind(&path);
         Self {
             path,
+            kind,
             phase: RootScanPhase::NotStarted,
             started_at: None,
             discovered_count: 0,
@@ -269,6 +279,7 @@ struct ScanIssue {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct RootScanResult {
+    kind: InputRootKind,
     entries: Vec<TransitiveInputRow>,
     issue: Option<String>,
 }
@@ -704,39 +715,23 @@ fn input_paths_step(
         .automation_id("reactor-clear-paths")
         .into();
     let toolbar: Element = hstack((add_button, clear_button)).spacing(8.0).into();
-    let drop_hint: Element = drop_zone_hint(drop_hovering, has_selected_paths);
-    let status: Element = input_scan_status(&scan);
+    let banner: Element = input_status_banner(&scan, drop_hovering, has_selected_paths);
     let issue_stack = input_issue_bars(&scan);
-    let columns: Element = grid((
-        selected_inputs_panel(wizard.clone(), set_wizard.clone(), &scan, set_scan.clone())
-            .grid_row(0)
-            .grid_column(0),
-        transitive_inputs_panel(&scan, drop_hovering)
-            .grid_row(0)
-            .grid_column(1),
-    ))
-    .rows([GridLength::Star(1.0)])
-    .columns([GridLength::Star(1.0), GridLength::Star(1.45)])
-    .column_spacing(16.0)
-    .row_spacing(0.0)
-    .min_height(320.0)
-    .vertical_alignment(VerticalAlignment::Stretch)
-    .into();
+    let hierarchy_surface: Element =
+        input_hierarchy_surface(&wizard, &set_wizard, &scan, &set_scan, drop_hovering).grid_row(4);
 
     let content = grid((
         page_header(
             "Pick input paths",
-            "Keep explicit input roots on the left, and let CM gather the transitive files it will process on the right.",
+            "Add files or folders, then review the resolved descendants in a single hierarchy.",
         )
         .grid_row(0),
         toolbar.grid_row(1),
-        drop_hint.grid_row(2),
-        status.grid_row(3),
-        issue_stack.grid_row(4),
-        columns.grid_row(5),
+        banner.grid_row(2),
+        issue_stack.grid_row(3),
+        hierarchy_surface,
     ))
     .rows([
-        GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
@@ -749,36 +744,6 @@ fn input_paths_step(
     .automation_id("reactor-pick-input-paths-page");
 
     page_shell(content)
-}
-
-fn drop_zone_hint(drop_hovering: bool, has_selected_paths: bool) -> Element {
-    let (title, message, tone, automation_id) = if drop_hovering {
-        (
-            "Drop to add paths",
-            "Release now to add the dragged files and folders as explicit inputs.",
-            InfoBarTone::Success,
-            "reactor-drop-hover-indicator",
-        )
-    } else if has_selected_paths {
-        (
-            "Drag and drop is ready",
-            "You can still drag more files or folders into the window at any time.",
-            InfoBarTone::Informational,
-            "reactor-drop-ready-indicator",
-        )
-    } else {
-        (
-            "Drop files or folders here",
-            "Drag paths from Explorer into the window, or use Add paths.",
-            InfoBarTone::Informational,
-            "reactor-drop-empty-indicator",
-        )
-    };
-
-    info_bar_with_tone(title, message, tone)
-        .max_width(960.0)
-        .automation_id(automation_id)
-        .into()
 }
 
 #[derive(Clone, Copy)]
@@ -802,61 +767,77 @@ fn info_bar_with_tone(
     }
 }
 
-fn input_scan_status(scan: &InputScanState) -> Element {
-    match scan.status {
-        ScanStatus::Empty => info_bar_with_tone(
-            "No input paths yet",
-            "Add explicit roots on the left or drop files and folders into the window.",
-            InfoBarTone::Informational,
-        )
-        .max_width(960.0)
-        .automation_id("reactor-input-status")
-        .into(),
-        ScanStatus::Loading => hstack((
-            ProgressRing::indeterminate()
-                .width(18.0)
-                .height(18.0)
-                .automation_id("reactor-input-loading"),
-            text_block(format!(
-                "Gathering descendants for {} explicit root{}...",
-                scan.roots.len(),
-                plural_suffix(scan.roots.len())
-            ))
-            .font_size(13.0),
-        ))
-        .spacing(8.0)
-        .max_width(960.0)
-        .automation_id("reactor-input-status")
-        .into(),
-        ScanStatus::Ready => info_bar_with_tone(
-            "Input discovery ready",
-            format!(
-                "Resolved {} explicit root{} into {} transitive file{}.",
-                scan.roots.len(),
-                plural_suffix(scan.roots.len()),
-                scan.transitive_entries.len(),
-                plural_suffix(scan.transitive_entries.len())
-            ),
+fn input_status_banner(
+    scan: &InputScanState,
+    drop_hovering: bool,
+    has_selected_paths: bool,
+) -> Element {
+    let (title, message, tone, automation_id) = if drop_hovering {
+        (
+            "Drop to add paths",
+            "Release now to add the dragged files and folders.".to_string(),
             InfoBarTone::Success,
+            "reactor-drop-hover-indicator",
         )
-        .max_width(960.0)
-        .automation_id("reactor-input-status")
-        .into(),
-        ScanStatus::ReadyWithIssues => info_bar_with_tone(
-            "Input discovery finished with issues",
-            format!(
-                "{} transitive file{} gathered, with {} root issue{}.",
-                scan.transitive_entries.len(),
-                plural_suffix(scan.transitive_entries.len()),
-                scan.issues.len(),
-                plural_suffix(scan.issues.len())
+    } else {
+        match scan.status {
+            ScanStatus::Empty => (
+                "Drop files or folders here",
+                "Use Add paths or drag files and folders into the window.".to_string(),
+                InfoBarTone::Informational,
+                "reactor-input-status-empty",
             ),
-            InfoBarTone::Warning,
-        )
+            ScanStatus::Loading => (
+                "Scanning input paths",
+                format!(
+                    "{} root{} selected. {} transitive file{} discovered so far.",
+                    scan.roots.len(),
+                    plural_suffix(scan.roots.len()),
+                    scan.transitive_entries.len(),
+                    plural_suffix(scan.transitive_entries.len())
+                ),
+                InfoBarTone::Informational,
+                "reactor-input-status-loading",
+            ),
+            ScanStatus::Ready => (
+                "Input paths ready",
+                format!(
+                    "{} root{} resolved into {} transitive file{}.",
+                    scan.roots.len(),
+                    plural_suffix(scan.roots.len()),
+                    scan.transitive_entries.len(),
+                    plural_suffix(scan.transitive_entries.len())
+                ),
+                InfoBarTone::Success,
+                "reactor-input-status-ready",
+            ),
+            ScanStatus::ReadyWithIssues => (
+                "Input paths ready with issues",
+                format!(
+                    "{} root{} resolved into {} transitive file{}, with {} issue{}.",
+                    scan.roots.len(),
+                    plural_suffix(scan.roots.len()),
+                    scan.transitive_entries.len(),
+                    plural_suffix(scan.transitive_entries.len()),
+                    scan.issues.len(),
+                    plural_suffix(scan.issues.len())
+                ),
+                InfoBarTone::Warning,
+                "reactor-input-status-warning",
+            ),
+        }
+    };
+
+    let message = if has_selected_paths || drop_hovering {
+        message
+    } else {
+        "Use Add paths or drag files and folders into the window.".to_string()
+    };
+
+    info_bar_with_tone(title, message, tone)
         .max_width(960.0)
-        .automation_id("reactor-input-status")
-        .into(),
-    }
+        .automation_id(automation_id)
+        .into()
 }
 
 fn input_issue_bars(scan: &InputScanState) -> Element {
@@ -882,201 +863,201 @@ fn input_issue_bars(scan: &InputScanState) -> Element {
     .into()
 }
 
-fn selected_inputs_panel(
-    wizard: StudioState,
-    set_wizard: SetState<StudioState>,
+fn input_hierarchy_surface(
+    wizard: &StudioState,
+    set_wizard: &SetState<StudioState>,
     scan: &InputScanState,
-    set_scan: AsyncSetState<InputScanState>,
+    set_scan: &AsyncSetState<InputScanState>,
+    drop_hovering: bool,
 ) -> Element {
-    let rows = scan.roots.clone();
-    let body: Element = if rows.is_empty() {
-        panel_placeholder(
-            "No explicit inputs yet",
-            "Add paths or drop files and folders into the window to build the input set.",
-        )
-        .automation_id("reactor-selected-inputs-empty")
-        .into()
-    } else {
-        list_view(rows, move |row, _| {
-            let detail = input_root_row_detail(row);
-            let remove_path = row.path.clone();
-            let remove_row = {
-                let wizard = wizard.clone();
-                let set_wizard = set_wizard.clone();
-                let set_scan = set_scan.clone();
-                move || {
-                    remove_selected_path(
-                        &remove_path,
-                        wizard.clone(),
-                        &set_wizard,
-                        set_scan.clone(),
-                    );
-                }
-            };
-
-            let status_button: Element = button(" ")
-                .subtle()
-                .icon(root_status_glyph(row.phase))
-                .tooltip(detail.clone())
-                .on_click(move || {
-                    let _ = copy_text_to_clipboard(&detail);
-                })
-                .width(36.0)
-                .height(36.0)
-                .automation_name(format!("Copy status for {}", row.path.display()))
-                .into();
-            let remove_button: Element = button(" ")
-                .subtle()
-                .icon(SymbolGlyph::Delete)
-                .tooltip(format!("Remove {}", row.path.display()))
-                .on_click(remove_row)
-                .width(36.0)
-                .height(36.0)
-                .automation_name(format!("Remove {}", row.path.display()))
-                .into();
-
-            border(
-                grid((
-                    status_button.grid_row(0).grid_column(0),
-                    vstack((
-                        text_block(row.path.display().to_string())
-                            .wrap()
-                            .font_size(13.0),
-                        text_block(root_status_summary(row))
-                            .foreground(ThemeRef::SecondaryText)
-                            .font_size(12.0)
-                            .wrap(),
-                    ))
-                    .spacing(4.0)
-                    .grid_row(0)
-                    .grid_column(1),
-                    remove_button.grid_row(0).grid_column(2),
-                ))
-                .rows([GridLength::Auto])
-                .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
-                .column_spacing(8.0),
-            )
-            .background(ThemeRef::SubtleFill)
-            .border_brush(ThemeRef::CardStroke)
-            .border_thickness(Thickness::uniform(1.0))
-            .corner_radius(8.0)
-            .padding(Thickness::uniform(10.0))
-            .margin(Thickness::uniform(0.0))
-        })
-        .with_key_selector(|row| row.path.to_string_lossy().into_owned())
-        .selection_mode(SelectionMode::None)
-        .build()
-        .automation_id("reactor-selected-inputs-list")
-    };
-
-    panel_shell(
-        "Explicit input paths",
-        "Each row is a root that CM will resolve into transitive files.",
-        body,
-    )
-}
-
-fn transitive_inputs_panel(scan: &InputScanState, drop_hovering: bool) -> Element {
-    let summary: Element = transitive_status_bar(scan).into();
-    let body: Element = if scan.transitive_entries.is_empty() {
-        empty_transitive_surface(drop_hovering)
-            .automation_id("reactor-transitive-inputs-empty")
+    let surface_body: Element = if scan.roots.is_empty() {
+        empty_input_surface(drop_hovering)
+            .automation_id("reactor-input-hierarchy-empty")
             .into()
     } else {
-        list_view(scan.transitive_entries.clone(), move |entry, _| {
-            border(
-                vstack((
-                    text_block(entry.path.display().to_string())
-                        .wrap()
-                        .font_size(13.0),
-                    text_block(format!("From {}", entry.source_root.display()))
-                        .foreground(ThemeRef::SecondaryText)
-                        .font_size(12.0)
-                        .wrap(),
-                ))
-                .spacing(4.0),
-            )
-            .background(ThemeRef::SubtleFill)
-            .border_brush(ThemeRef::CardStroke)
-            .border_thickness(Thickness::uniform(1.0))
-            .corner_radius(8.0)
-            .padding(Thickness::uniform(10.0))
-        })
-        .with_key_selector(|entry| entry.path.to_string_lossy().into_owned())
-        .selection_mode(SelectionMode::None)
-        .build()
-        .automation_id("reactor-transitive-inputs-list")
+        input_hierarchy_list(wizard, set_wizard, scan, set_scan)
     };
 
-    panel_shell(
-        "Discovered transitive inputs",
-        "Files gathered from the explicit roots. Directory roots contribute descendant files here.",
-        vstack((summary, body)).spacing(12.0),
-    )
+    border(surface_body)
+        .background(ThemeRef::SolidBackground)
+        .border_brush(if drop_hovering {
+            ThemeRef::SystemSuccess
+        } else {
+            ThemeRef::CardStroke
+        })
+        .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.0 }))
+        .corner_radius(12.0)
+        .padding(Thickness::uniform(14.0))
+        .min_height(320.0)
+        .vertical_alignment(VerticalAlignment::Stretch)
+        .into()
 }
 
-fn panel_shell(title: &str, subtitle: &str, body: impl Into<Element>) -> Element {
-    border(
-        grid((
-            vstack((
-                text_block(title).font_size(16.0).semibold(),
-                text_block(subtitle)
-                    .foreground(ThemeRef::SecondaryText)
-                    .font_size(12.0)
-                    .wrap(),
-            ))
-            .spacing(6.0)
-            .grid_row(0)
-            .grid_column(0),
-            body.into().grid_row(1).grid_column(0),
-        ))
-        .rows([GridLength::Auto, GridLength::Star(1.0)])
-        .columns([GridLength::Star(1.0)])
-        .row_spacing(12.0),
-    )
-    .background(ThemeRef::SolidBackground)
-    .border_brush(ThemeRef::AccentSecondary)
-    .border_thickness(Thickness::uniform(1.25))
-    .corner_radius(12.0)
-    .padding(Thickness::uniform(14.0))
-    .min_height(320.0)
-    .vertical_alignment(VerticalAlignment::Stretch)
+fn input_hierarchy_list(
+    wizard: &StudioState,
+    set_wizard: &SetState<StudioState>,
+    scan: &InputScanState,
+    set_scan: &AsyncSetState<InputScanState>,
+) -> Element {
+    let rows = scan.roots.clone();
+    let all_entries = scan.transitive_entries.clone();
+    let wizard = wizard.clone();
+    let set_wizard = set_wizard.clone();
+    let set_scan = set_scan.clone();
+
+    list_view(rows, move |row, _| {
+        let descendants = descendants_for_root(&all_entries, row);
+        input_root_hierarchy_row(row, &descendants, &wizard, &set_wizard, &set_scan)
+    })
+    .with_key_selector(|row| row.path.to_string_lossy().into_owned())
+    .selection_mode(SelectionMode::None)
+    .build()
+    .automation_id("reactor-input-hierarchy-list")
+}
+
+fn input_root_hierarchy_row(
+    row: &InputRootRow,
+    descendants: &[TransitiveInputRow],
+    wizard: &StudioState,
+    set_wizard: &SetState<StudioState>,
+    set_scan: &AsyncSetState<InputScanState>,
+) -> Element {
+    let detail = input_root_row_detail(row);
+    let remove_path = row.path.clone();
+    let remove_row = {
+        let wizard = wizard.clone();
+        let set_wizard = set_wizard.clone();
+        let set_scan = set_scan.clone();
+        move || {
+            remove_selected_path(&remove_path, wizard.clone(), &set_wizard, set_scan.clone());
+        }
+    };
+
+    let header = input_root_row_header(row, detail, remove_row);
+    let row_content: Element = if matches!(row.kind, InputRootKind::Directory) {
+        Expander::new(input_root_descendant_list(row, descendants))
+            .header_content(header)
+            .expanded(true)
+            .into()
+    } else {
+        header
+    };
+
+    border(row_content)
+        .background(ThemeRef::SubtleFill)
+        .border_brush(ThemeRef::CardStroke)
+        .border_thickness(Thickness::uniform(1.0))
+        .corner_radius(8.0)
+        .padding(Thickness::uniform(10.0))
+        .margin(Thickness::uniform(0.0))
+        .into()
+}
+
+fn input_root_row_header(
+    row: &InputRootRow,
+    detail: String,
+    remove_row: impl Fn() + 'static,
+) -> Element {
+    let status_button: Element = button(" ")
+        .subtle()
+        .icon(root_status_glyph(row.phase))
+        .tooltip(detail.clone())
+        .on_click(move || {
+            let _ = copy_text_to_clipboard(&detail);
+        })
+        .width(32.0)
+        .height(32.0)
+        .automation_name(format!("Copy status for {}", row.path.display()))
+        .into();
+    let remove_button: Element = button(" ")
+        .subtle()
+        .icon(SymbolGlyph::Delete)
+        .tooltip(format!("Remove {}", row.path.display()))
+        .on_click(remove_row)
+        .width(40.0)
+        .height(40.0)
+        .automation_name(format!("Remove {}", row.path.display()))
+        .into();
+
+    let mut children = vec![
+        text_block(row.path.display().to_string())
+            .wrap()
+            .font_size(13.0)
+            .into(),
+    ];
+    if let Some(summary) = root_status_summary(row) {
+        children.push(
+            text_block(summary)
+                .foreground(ThemeRef::SecondaryText)
+                .font_size(12.0)
+                .wrap()
+                .into(),
+        );
+    }
+
+    grid((
+        status_button.grid_row(0).grid_column(0),
+        vstack(children).spacing(4.0).grid_row(0).grid_column(1),
+        remove_button.grid_row(0).grid_column(2),
+    ))
+    .rows([GridLength::Auto])
+    .columns([GridLength::Auto, GridLength::Star(1.0), GridLength::Auto])
+    .column_spacing(10.0)
     .into()
 }
 
-fn panel_placeholder(title: &str, subtitle: &str) -> Border {
-    border(
-        vstack((
-            text_block(title).font_size(20.0).bold(),
-            text_block(subtitle)
-                .foreground(ThemeRef::SecondaryText)
-                .font_size(13.0)
-                .wrap()
-                .max_width(360.0),
-        ))
-        .spacing(10.0)
-        .horizontal_alignment(HorizontalAlignment::Center)
-        .vertical_alignment(VerticalAlignment::Center),
+fn input_root_descendant_list(row: &InputRootRow, descendants: &[TransitiveInputRow]) -> Element {
+    if descendants.is_empty() {
+        let message = match row.phase {
+            RootScanPhase::InProgress => "Scanning descendants...",
+            RootScanPhase::Failed => "No descendants available because scanning failed.",
+            RootScanPhase::Succeeded => "No descendant files found.",
+            RootScanPhase::NotStarted => "Waiting to scan descendants.",
+        };
+
+        return text_block(message)
+            .foreground(ThemeRef::SecondaryText)
+            .font_size(12.0)
+            .margin(Thickness {
+                left: 42.0,
+                top: 8.0,
+                right: 8.0,
+                bottom: 0.0,
+            })
+            .into();
+    }
+
+    vstack(
+        descendants
+            .iter()
+            .map(|entry| {
+                text_block(transitive_entry_label(&row.path, entry))
+                    .font_size(12.5)
+                    .wrap()
+                    .margin(Thickness {
+                        left: 42.0,
+                        top: 6.0,
+                        right: 8.0,
+                        bottom: 0.0,
+                    })
+                    .into()
+            })
+            .collect::<Vec<Element>>(),
     )
-    .background(ThemeRef::SubtleFill)
-    .border_brush(ThemeRef::AccentSecondary)
-    .border_thickness(Thickness::uniform(1.0))
-    .corner_radius(8.0)
-    .padding(Thickness::uniform(18.0))
-    .min_height(220.0)
-    .vertical_alignment(VerticalAlignment::Stretch)
+    .spacing(2.0)
+    .into()
 }
 
-fn empty_transitive_surface(drop_hovering: bool) -> Border {
+fn empty_input_surface(drop_hovering: bool) -> Border {
     let title = if drop_hovering {
         "Release to add files and folders"
     } else {
         "Drop files or folders here"
     };
     let subtitle = if drop_hovering {
-        "CM will add the dropped paths as explicit inputs and keep scanning descendants into this list."
+        "CM will add the dropped paths and resolve descendants here."
     } else {
-        "This panel reflects the transitive files CM will process after it resolves the explicit roots."
+        "Add paths or drag files and folders into the window to build the input hierarchy."
     };
 
     border(
@@ -1086,7 +1067,7 @@ fn empty_transitive_surface(drop_hovering: bool) -> Border {
                 .foreground(ThemeRef::SecondaryText)
                 .font_size(13.0)
                 .wrap()
-                .max_width(440.0),
+                .max_width(520.0),
         ))
         .spacing(10.0)
         .horizontal_alignment(HorizontalAlignment::Center)
@@ -1104,57 +1085,27 @@ fn empty_transitive_surface(drop_hovering: bool) -> Border {
     })
     .border_thickness(Thickness::uniform(if drop_hovering { 2.0 } else { 1.0 }))
     .corner_radius(8.0)
-    .padding(Thickness::uniform(20.0))
+    .padding(Thickness::uniform(18.0))
     .min_height(220.0)
     .vertical_alignment(VerticalAlignment::Stretch)
 }
 
-fn transitive_status_bar(scan: &InputScanState) -> InfoBar {
-    match scan.status {
-        ScanStatus::Empty => InfoBar::new("No transitive inputs yet")
-            .message("Once you add a root, CM will enumerate descendant files here.")
-            .informational()
-            .is_closable(false),
-        ScanStatus::Loading => {
-            let completed = scan
-                .roots
-                .iter()
-                .filter(|root| {
-                    matches!(root.phase, RootScanPhase::Succeeded | RootScanPhase::Failed)
-                })
-                .count();
-            InfoBar::new("Gathering descendants")
-                .message(format!(
-                    "Finished {} of {} roots so far. {} transitive file{} discovered.",
-                    completed,
-                    scan.roots.len(),
-                    scan.transitive_entries.len(),
-                    plural_suffix(scan.transitive_entries.len())
-                ))
-                .informational()
-                .is_closable(false)
-        }
-        ScanStatus::Ready => InfoBar::new("Transitive input list ready")
-            .message(format!(
-                "{} file{} discovered from {} explicit root{}.",
-                scan.transitive_entries.len(),
-                plural_suffix(scan.transitive_entries.len()),
-                scan.roots.len(),
-                plural_suffix(scan.roots.len())
-            ))
-            .success()
-            .is_closable(false),
-        ScanStatus::ReadyWithIssues => InfoBar::new("Transitive input list ready with issues")
-            .message(format!(
-                "{} file{} discovered, with {} scan issue{} to review on the left.",
-                scan.transitive_entries.len(),
-                plural_suffix(scan.transitive_entries.len()),
-                scan.issues.len(),
-                plural_suffix(scan.issues.len())
-            ))
-            .warning()
-            .is_closable(false),
-    }
+fn descendants_for_root(
+    all_entries: &[TransitiveInputRow],
+    row: &InputRootRow,
+) -> Vec<TransitiveInputRow> {
+    all_entries
+        .iter()
+        .filter(|entry| same_path(&entry.source_root, &row.path))
+        .cloned()
+        .collect()
+}
+
+fn transitive_entry_label(root_path: &Path, entry: &TransitiveInputRow) -> String {
+    entry.path.strip_prefix(root_path).map_or_else(
+        |_| entry.path.display().to_string(),
+        |relative| relative.display().to_string(),
+    )
 }
 
 fn root_status_glyph(phase: RootScanPhase) -> SymbolGlyph {
@@ -1166,28 +1117,27 @@ fn root_status_glyph(phase: RootScanPhase) -> SymbolGlyph {
     }
 }
 
-fn root_status_summary(row: &InputRootRow) -> String {
+fn root_status_summary(row: &InputRootRow) -> Option<String> {
     match row.phase {
-        RootScanPhase::NotStarted => "Waiting to scan descendants.".to_string(),
-        RootScanPhase::InProgress => {
-            if let Some(started_at) = row.started_at {
-                format!(
-                    "Scanning descendants. Running for {}.",
-                    format_duration(started_at.elapsed())
-                )
-            } else {
-                "Scanning descendants.".to_string()
-            }
+        RootScanPhase::NotStarted => None,
+        RootScanPhase::InProgress => Some(if let Some(started_at) = row.started_at {
+            format!(
+                "Scanning descendants. Running for {}.",
+                format_duration(started_at.elapsed())
+            )
+        } else {
+            "Scanning descendants.".to_string()
+        }),
+        RootScanPhase::Succeeded => matches!(row.kind, InputRootKind::Directory).then(|| {
+            format!(
+                "{} transitive file{} discovered.",
+                row.discovered_count,
+                plural_suffix(row.discovered_count)
+            )
+        }),
+        RootScanPhase::Failed => {
+            Some("Scanning failed. Hover the status icon for details.".to_string())
         }
-        RootScanPhase::Succeeded => format!(
-            "{} transitive file{} discovered.",
-            row.discovered_count,
-            plural_suffix(row.discovered_count)
-        ),
-        RootScanPhase::Failed => row
-            .issue
-            .clone()
-            .unwrap_or_else(|| "Scanning failed.".to_string()),
     }
 }
 
@@ -1202,9 +1152,16 @@ fn input_root_row_detail(row: &InputRootRow) -> String {
             format!("In progress for {elapsed}")
         }
         RootScanPhase::Succeeded => format!(
-            "Succeeded with {} transitive file{}",
-            row.discovered_count,
-            plural_suffix(row.discovered_count)
+            "Succeeded{}",
+            if matches!(row.kind, InputRootKind::Directory) {
+                format!(
+                    " with {} transitive file{}",
+                    row.discovered_count,
+                    plural_suffix(row.discovered_count)
+                )
+            } else {
+                String::new()
+            }
         ),
         RootScanPhase::Failed => format!(
             "Failed: {}",
@@ -1389,6 +1346,7 @@ fn apply_root_scan_result(state: &mut InputScanState, root_path: &Path, result: 
         .iter_mut()
         .find(|row| same_path(&row.path, root_path))
     {
+        root.kind = result.kind;
         root.phase = if result.issue.is_some() {
             RootScanPhase::Failed
         } else {
@@ -1427,6 +1385,7 @@ fn scan_root(root_path: &Path) -> RootScanResult {
         Ok(metadata) => metadata,
         Err(error) => {
             return RootScanResult {
+                kind: InputRootKind::Unknown,
                 entries: Vec::new(),
                 issue: Some(format!(
                     "Could not inspect {}: {error}",
@@ -1438,6 +1397,7 @@ fn scan_root(root_path: &Path) -> RootScanResult {
 
     if metadata.is_file() {
         return RootScanResult {
+            kind: InputRootKind::File,
             entries: vec![TransitiveInputRow {
                 path: root_path.to_path_buf(),
                 source_root: root_path.to_path_buf(),
@@ -1450,18 +1410,21 @@ fn scan_root(root_path: &Path) -> RootScanResult {
         let mut entries = Vec::new();
         if let Err(error) = collect_descendant_files(root_path, root_path, &mut entries) {
             return RootScanResult {
+                kind: InputRootKind::Directory,
                 entries: Vec::new(),
                 issue: Some(error),
             };
         }
         sort_transitive_entries(&mut entries);
         return RootScanResult {
+            kind: InputRootKind::Directory,
             entries,
             issue: None,
         };
     }
 
     RootScanResult {
+        kind: InputRootKind::Unknown,
         entries: vec![TransitiveInputRow {
             path: root_path.to_path_buf(),
             source_root: root_path.to_path_buf(),
@@ -1521,6 +1484,14 @@ fn same_path(left: &Path, right: &Path) -> bool {
             .eq_ignore_ascii_case(&right.to_string_lossy())
     } else {
         left == right
+    }
+}
+
+fn detect_root_kind(path: &Path) -> InputRootKind {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_dir() => InputRootKind::Directory,
+        Ok(metadata) if metadata.is_file() => InputRootKind::File,
+        Ok(_) | Err(_) => InputRootKind::Unknown,
     }
 }
 
