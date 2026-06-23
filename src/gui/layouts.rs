@@ -35,10 +35,7 @@ impl Layout {
     }
 
     pub fn apply_to_tree(&self, tree_id: impl Into<Id>) -> Tree<CmPane> {
-        fn build(
-            node: &Node,
-            tiles: &mut egui_tiles::Tiles<CmPane>,
-        ) -> Option<egui_tiles::TileId> {
+        fn build(node: &Node, tiles: &mut egui_tiles::Tiles<CmPane>) -> Option<egui_tiles::TileId> {
             if node.variant == "Pane" {
                 let pane_str = node.pane.as_deref().unwrap_or("InputPaths");
                 if pane_str == "ProductSearch" {

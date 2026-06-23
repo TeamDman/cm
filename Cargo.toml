@@ -28,11 +28,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 humantime = "2.1"
 # serde = { version = "1.0", features = ["derive"] } # use facet instead
 # serde_json = "1" # use facet instead
-facet = "0.41.0"
-facet-json = "0.41.0"
+facet = "=0.46.5"
+facet-json = "=0.46.1"
 sha2 = "0.10.9"
 hex = "0.4.3"
-facet-pretty = "0.41.0"
+facet-pretty = "=0.46.5"
 atty = "0.2"
 glob = "0.3"
 dunce = "1"
@@ -54,11 +54,6 @@ egui-toast = "0.19.1"
 # used by tests
 arbitrary = "1"
 tempfile = "3"
-
-[patch.crates-io]
-facet = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
-facet-json = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
-facet-pretty = { git = "https://github.com/teamdman/facet", branch = "teamy/fix-option-raw-json" }
 
 [patch."https://github.com/TeamDman/egui_tracing"]
 egui_tracing = { path = "G:/Programming/Repos/egui_tracing/egui-tracing"}

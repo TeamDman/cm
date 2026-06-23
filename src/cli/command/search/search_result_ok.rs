@@ -39,12 +39,16 @@ pub struct Sorting {
 
 // Result item newtypes
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[repr(transparent)]
 pub struct Uid(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[repr(transparent)]
 pub struct Sku(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[repr(transparent)]
 pub struct Url(pub String);
 #[derive(Debug, Clone, PartialEq, Facet)]
+#[repr(transparent)]
 pub struct Price(pub String);
 impl Price {
     #[must_use]

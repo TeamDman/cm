@@ -82,8 +82,11 @@ fn spawn_product_search(tx: UnboundedSender<BackgroundMessage>, args: SearchArgs
             Ok(res) => {
                 // Prettify once on the background thread and send both the parsed struct and the prettified string
                 // Format as json first, fallback to facet_pretty if that fails
-                let pretty = facet_json::to_string_pretty(&res.results)
-                    .unwrap_or(PrettyPrinter::new().with_colors(false).format(&res.results));
+                let pretty = facet_json::to_string_pretty(&res.results).unwrap_or(
+                    PrettyPrinter::new()
+                        .with_colors(false.into())
+                        .format(&res.results),
+                );
                 let _ = tx.send(BackgroundMessage::ProductSearchResult {
                     result: Some(res),
                     pretty: Some(pretty),
