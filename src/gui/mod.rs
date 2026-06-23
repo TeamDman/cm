@@ -72,7 +72,7 @@ pub fn run_gui() -> eyre::Result<()> {
 
 #[cfg(target_os = "windows")]
 fn try_apply_embedded_window_icon() -> bool {
-    use teamy_windows::hicon::get_icon_from_current_module;
+    use crate::windows_utils::hicon::get_icon_from_current_module;
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
     use windows::Win32::UI::WindowsAndMessaging::{ICON_SMALL, SendMessageW, WM_SETICON};

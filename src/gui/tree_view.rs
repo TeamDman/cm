@@ -16,10 +16,10 @@ use std::fmt::Write;
 fn depth_to_space(depth: usize) -> f32 {
     depth as f32 * 16.0
 }
+#[cfg(windows)]
+use crate::windows_utils::shell::select::open_folder_and_select_items;
 use std::path::Path;
 use std::path::PathBuf;
-#[cfg(windows)]
-use teamy_windows::shell::select::open_folder_and_select_items;
 use tracing::debug;
 
 /// A simple tree node for displaying paths hierarchically

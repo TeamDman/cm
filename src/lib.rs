@@ -12,8 +12,11 @@ pub mod session_id;
 pub mod site_id;
 pub mod tracing;
 pub mod user_id;
+#[cfg(windows)]
+pub mod windows_utils;
 
 use crate::cli::Cli;
+use ::tracing::info;
 use chrono::{DateTime, Local, Utc};
 use clap::CommandFactory;
 use clap::FromArgMatches;
@@ -61,6 +64,7 @@ pub fn main() -> eyre::Result<()> {
         &cli.global_args.json_log_behaviour(),
     )?;
 
+    info!("Ahoy!");
     cli.invoke(&app_home)?;
     Ok(())
 }
