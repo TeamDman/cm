@@ -5,13 +5,14 @@ use crate::rename_rules::add_rule;
 use crate::rename_rules::list_rules;
 use crate::rename_rules::remove_rule;
 use arbitrary::Arbitrary;
-use clap::Args;
-use clap::Subcommand;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 use tracing::info;
 use uuid::Uuid;
 
-#[derive(Subcommand, Clone, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[repr(u8)]
 pub enum RenameRuleCommand {
     /// Add a rename rule
     Add(RenameRuleAddArgs),
@@ -65,21 +66,22 @@ impl ToArgs for RenameRuleCommand {
     }
 }
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct RenameRuleAddArgs {
     /// Find pattern (regex)
+    #[facet(args::positional)]
     pub find: String,
     /// Replacement string (optional)
-    #[clap(default_value = "")]
+    #[facet(args::positional, default = "")]
     pub replace: String,
     /// Only apply when name is too long (longer than max name length)
-    #[clap(long = "only-when-too-long")]
+    #[facet(args::named, rename = "only-when-too-long", default)]
     pub only_when_too_long: bool,
     /// Case-sensitive match (default is case-insensitive)
-    #[clap(long = "case-sensitive")]
+    #[facet(args::named, rename = "case-sensitive", default)]
     pub case_sensitive: bool,
     /// Create the rule in a disabled state
-    #[clap(long = "disabled")]
+    #[facet(args::named, rename = "disabled", default)]
     pub disabled: bool,
 }
 
@@ -121,7 +123,7 @@ impl ToArgs for RenameRuleAddArgs {
     }
 }
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct RenameRuleListArgs {}
 
 impl RenameRuleListArgs {
@@ -144,12 +146,13 @@ impl ToArgs for RenameRuleListArgs {
     }
 }
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct RenameRuleRemoveArgs {
     /// Remove all rules
-    #[clap(long)]
+    #[facet(args::named, default)]
     pub all: bool,
     /// Rule id (UUID). If omitted and --all is specified, removes all rules.
+    #[facet(args::positional, default)]
     pub id: Option<String>,
 }
 
@@ -204,7 +207,7 @@ impl ToArgs for RenameRuleRemoveArgs {
     }
 }
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct RenameRulePathArgs {}
 
 impl RenameRulePathArgs {

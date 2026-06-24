@@ -6,19 +6,31 @@ pub mod to_args;
 use crate::app_home::AppHome;
 use crate::cli::command::Command;
 use crate::cli::global_args::GlobalArgs;
+use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Parser;
+use facet::Facet;
+use figue as args;
+use figue::FigueBuiltins;
 use std::ffi::OsString;
-use to_args::ToArgs;
 
-#[derive(Parser, Arbitrary, PartialEq, Debug)]
-#[clap(version)]
+#[derive(Facet, Arbitrary, Debug)]
 pub struct Cli {
-    #[clap(flatten)]
+    #[facet(flatten)]
     pub global_args: GlobalArgs,
 
-    #[clap(subcommand)]
-    pub command: Option<Command>,
+    #[facet(flatten)]
+    #[arbitrary(default)]
+    pub builtins: FigueBuiltins,
+
+    #[facet(args::subcommand, default)]
+    #[arbitrary(default)]
+    pub command: Command,
+}
+
+impl PartialEq for Cli {
+    fn eq(&self, other: &Self) -> bool {
+        self.global_args == other.global_args && self.command == other.command
+    }
 }
 
 impl Cli {
@@ -26,7 +38,7 @@ impl Cli {
     ///
     /// Returns an error if the CLI command fails.
     pub fn invoke(self, app_home: &AppHome) -> eyre::Result<()> {
-        self.command.unwrap_or_default().invoke(app_home)
+        self.command.invoke(app_home)
     }
 }
 
@@ -34,9 +46,7 @@ impl ToArgs for Cli {
     fn to_args(&self) -> Vec<OsString> {
         let mut args = Vec::new();
         args.extend(self.global_args.to_args());
-        if let Some(command) = &self.command {
-            args.extend(command.to_args());
-        }
+        args.extend(self.command.to_args());
         args
     }
 }

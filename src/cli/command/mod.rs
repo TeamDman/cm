@@ -15,10 +15,11 @@ use crate::cli::command::search::search_command::SearchArgs;
 use crate::cli::command::site::SiteArgs;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Subcommand;
+use facet::Facet;
 use std::ffi::OsString;
 
-#[derive(Subcommand, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[repr(u8)]
 pub enum Command {
     /// Site related commands
     Site(SiteArgs),

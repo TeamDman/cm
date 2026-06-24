@@ -2,14 +2,15 @@ use crate::cache::CACHE_HOME;
 use crate::cache::clean_cache;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 
 /// Clean cached API responses
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct CleanArgs {
     /// Show what would be cleaned without actually deleting
-    #[clap(long)]
+    #[facet(args::named, default)]
     pub dry_run: bool,
 }
 

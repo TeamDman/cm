@@ -2,11 +2,12 @@ use crate::app_home::APP_HOME;
 use crate::cli::to_args::ToArgs;
 use crate::inputs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use clap::Subcommand;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 
-#[derive(Subcommand, Clone, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[repr(u8)]
 pub enum InputCommand {
     /// Add input paths (glob expands files; matched paths are canonicalized and persisted)
     Add(InputAddArgs),
@@ -52,9 +53,10 @@ impl ToArgs for InputCommand {
     }
 }
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct InputAddArgs {
     /// Glob pattern to add (file paths matched will be canonicalized and stored)
+    #[facet(args::positional)]
     pub pattern: String,
 }
 
@@ -80,7 +82,7 @@ impl ToArgs for InputAddArgs {
     }
 }
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct InputListArgs {}
 
 impl InputListArgs {
@@ -102,9 +104,10 @@ impl ToArgs for InputListArgs {
     }
 }
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct InputRemoveArgs {
     /// Glob pattern for paths to remove
+    #[facet(args::positional)]
     pub pattern: String,
 }
 

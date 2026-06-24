@@ -18,8 +18,6 @@ pub mod windows_utils;
 use crate::cli::Cli;
 use ::tracing::info;
 use chrono::{DateTime, Local, Utc};
-use clap::CommandFactory;
-use clap::FromArgMatches;
 pub use max_name_length::*;
 pub use session_id::*;
 pub use site_id::*;
@@ -52,10 +50,22 @@ fn version() -> String {
 /// # Errors
 /// Returns an error if CLI parsing fails or if tracing initialization fails or if the invoked command fails.
 pub fn main() -> eyre::Result<()> {
-    color_eyre::install()?;
     let version = version();
-    let cli = Cli::command().long_version(Box::leak(version.into_boxed_str()) as &'static str);
-    let cli = Cli::from_arg_matches(&cli.get_matches())?;
+    let cli: Cli = figue::Driver::new(
+        figue::builder::<Cli>()
+            .expect("schema should be valid")
+            .cli(|cli| cli.args_os(std::env::args_os().skip(1)).strict())
+            .help(move |help| {
+                help.version(version)
+                    .include_implementation_source_file(true)
+                    .include_implementation_git_url("TeamDman/cm", env!("GIT_REVISION"))
+            })
+            .build(),
+    )
+    .run()
+    .unwrap();
+
+    color_eyre::install()?;
     let app_home = crate::app_home::AppHome::resolve()?;
 
     // Initialize tracing based on global args (debug and --json/--log-file)

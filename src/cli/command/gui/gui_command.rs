@@ -1,10 +1,10 @@
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
 use std::ffi::OsString;
 use crate::cli::command::gui::GuiArgs;
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct GuiCommandArgs {}
 
 impl GuiCommandArgs {
@@ -20,3 +20,9 @@ impl ToArgs for GuiCommandArgs {
         vec![]
     }
 }
+
+
+
+
+
+

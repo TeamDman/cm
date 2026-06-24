@@ -2,11 +2,11 @@ use crate::MaxNameLength;
 use crate::app_home::AppHome;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
 use std::ffi::OsString;
 
 /// Reset the max name length to the default value and persist it to the config file
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct MaxNameLengthResetArgs {}
 
 impl MaxNameLengthResetArgs {

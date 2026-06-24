@@ -3,12 +3,13 @@ pub mod input_command;
 use crate::cli::command::input::input_command::InputCommand;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct InputArgs {
-    #[clap(subcommand)]
+    #[facet(args::subcommand)]
     pub command: InputCommand,
 }
 

@@ -2,13 +2,14 @@ pub mod rename_rule_command;
 
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
+use figue as args;
 pub use rename_rule_command::*;
 use std::ffi::OsString;
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct RenameRuleArgs {
-    #[clap(subcommand)]
+    #[facet(args::subcommand)]
     pub command: RenameRuleCommand,
 }
 

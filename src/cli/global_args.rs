@@ -1,26 +1,21 @@
 use crate::cli::json_log_behaviour::JsonLogBehaviour;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 
-#[derive(Args, Default, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Default, Arbitrary, Clone, PartialEq, Debug)]
 pub struct GlobalArgs {
     /// Enable debug logging
-    #[clap(long, global = true)]
+    #[facet(args::named, default)]
     pub debug: bool,
 
     /// Emit structured JSON logs alongside stderr output.
     /// Optionally specify a filename; if not provided, a timestamped filename will be generated.
-    #[clap(
-        long,
-        global = true,
-        value_name = "FILE",
-        num_args = 0..=1,
-        default_missing_value = "",
-        require_equals = false
-    )]
-    log_file: Option<String>,
+    #[facet(args::named, default)]
+    #[arbitrary(value = None)]
+    log_file: Option<Option<String>>,
 }
 
 impl GlobalArgs {
@@ -33,13 +28,13 @@ impl GlobalArgs {
         }
     }
 
-    /// Get the JSON log behaviour based on the --json argument.
     #[must_use]
     pub fn json_log_behaviour(&self) -> JsonLogBehaviour {
         match &self.log_file {
             None => JsonLogBehaviour::None,
-            Some(s) if s.is_empty() => JsonLogBehaviour::SomeAutomaticPath,
-            Some(s) => JsonLogBehaviour::Some(s.into()),
+            Some(None) => JsonLogBehaviour::SomeAutomaticPath,
+            Some(Some(s)) if s.is_empty() => JsonLogBehaviour::SomeAutomaticPath,
+            Some(Some(s)) => JsonLogBehaviour::Some(s.into()),
         }
     }
 }
@@ -52,10 +47,13 @@ impl ToArgs for GlobalArgs {
         }
         match &self.log_file {
             None => {}
-            Some(s) if s.is_empty() => {
+            Some(None) => {
                 args.push("--log-file".into());
             }
-            Some(path) => {
+            Some(Some(path)) if path.is_empty() => {
+                args.push("--log-file".into());
+            }
+            Some(Some(path)) => {
                 args.push("--log-file".into());
                 args.push(path.into());
             }

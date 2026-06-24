@@ -7,12 +7,13 @@ use crate::app_home::AppHome;
 use crate::cli::command::max_name_length::max_name_length_command::MaxNameLengthCommand;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 
-#[derive(Args, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct MaxNameLengthArgs {
-    #[clap(subcommand)]
+    #[facet(args::subcommand)]
     pub command: MaxNameLengthCommand,
 }
 

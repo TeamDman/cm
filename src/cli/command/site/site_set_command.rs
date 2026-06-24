@@ -1,12 +1,14 @@
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 
 /// Set the active site by id
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct SiteSetArgs {
     /// Site identifier to set
+    #[facet(args::positional)]
     pub id: String,
 }
 

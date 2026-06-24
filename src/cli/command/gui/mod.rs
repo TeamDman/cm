@@ -1,9 +1,9 @@
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
 use std::ffi::OsString;
 
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug, Default)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug, Default)]
 pub struct GuiArgs {}
 
 impl GuiArgs {

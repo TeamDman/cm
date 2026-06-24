@@ -4,10 +4,11 @@ use crate::cli::command::max_name_length::max_name_length_set_command::MaxNameLe
 use crate::cli::command::max_name_length::max_name_length_show_command::MaxNameLengthShowArgs;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Subcommand;
+use facet::Facet;
 use std::ffi::OsString;
 
-#[derive(Subcommand, Clone, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[repr(u8)]
 pub enum MaxNameLengthCommand {
     /// Show the current max name length
     Show(MaxNameLengthShowArgs),

@@ -3,10 +3,11 @@ use crate::cli::command::site::site_set_command::SiteSetArgs;
 use crate::cli::command::site::site_show_command::SiteShowArgs;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Subcommand;
+use facet::Facet;
 use std::ffi::OsString;
 
-#[derive(Subcommand, Clone, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
+#[repr(u8)]
 pub enum SiteCommand {
     /// Show the current site (or default)
     Show(SiteShowArgs),

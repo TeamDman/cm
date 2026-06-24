@@ -6,12 +6,13 @@ pub mod site_show_command;
 use crate::cli::command::site::site_command::SiteCommand;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
+use facet::Facet;
+use figue as args;
 use std::ffi::OsString;
 
-#[derive(Args, Arbitrary, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct SiteArgs {
-    #[clap(subcommand)]
+    #[facet(args::subcommand)]
     pub command: SiteCommand,
 }
 

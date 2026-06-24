@@ -5,9 +5,9 @@ use crate::cache::CacheEntry;
 use crate::cli::command::search::search_result_ok::SearchResultOk;
 use crate::cli::to_args::ToArgs;
 use arbitrary::Arbitrary;
-use clap::Args;
-use clap::ValueEnum;
+use facet::Facet;
 use facet_pretty::FacetPretty;
+use figue as args;
 use std::ffi::OsString;
 use std::sync::LazyLock;
 use tokio::sync::Mutex;
@@ -21,8 +21,11 @@ use tracing::span;
 /// Global mutex to serialize product searches (maximizes cache hits when multiple images share SKUs)
 static SEARCH_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(ValueEnum, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[facet(rename_all = "kebab-case")]
+#[repr(u8)]
 pub enum OutputFormat {
+    #[default]
     Auto,
     Json,
     Pretty,
@@ -39,19 +42,20 @@ impl std::fmt::Display for OutputFormat {
 }
 
 /// Search for a query
-#[derive(Args, Arbitrary, Clone, PartialEq, Debug)]
+#[derive(Facet, Arbitrary, Clone, PartialEq, Debug)]
 pub struct SearchArgs {
     /// Query to search for
+    #[facet(args::positional, default)]
     pub query: Option<String>,
     /// SKU to search for
-    #[clap(long)]
+    #[facet(args::named)]
     pub sku: Option<String>,
     /// Bypass the cache and fetch fresh data
-    #[clap(long)]
+    #[facet(args::named, default)]
     #[arbitrary(value = false)]
     pub no_cache: bool,
     /// Output mode: auto|json|pretty
-    #[clap(long, value_enum, default_value_t = OutputFormat::Auto)]
+    #[facet(args::named, default)]
     pub output: OutputFormat,
 }
 
