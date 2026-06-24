@@ -65,7 +65,6 @@ pub fn main() -> eyre::Result<()> {
     .run()
     .unwrap();
 
-    color_eyre::install()?;
     let app_home = crate::app_home::AppHome::resolve()?;
 
     // Initialize tracing based on global args (debug and --json/--log-file)
