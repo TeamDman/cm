@@ -23,7 +23,6 @@ pub struct Cli {
     pub builtins: FigueBuiltins,
 
     #[facet(args::subcommand, default)]
-    #[arbitrary(default)]
     pub command: Command,
 }
 
