@@ -22,8 +22,8 @@ pub struct Cli {
     #[arbitrary(default)]
     pub builtins: FigueBuiltins,
 
-    #[facet(args::subcommand, default)]
-    pub command: Command,
+    #[facet(args::subcommand)]
+    pub command: Option<Command>,
 }
 
 impl PartialEq for Cli {
@@ -37,7 +37,7 @@ impl Cli {
     ///
     /// Returns an error if the CLI command fails.
     pub fn invoke(self, app_home: &AppHome) -> eyre::Result<()> {
-        self.command.invoke(app_home)
+        self.command.unwrap_or_default().invoke(app_home)
     }
 }
 
@@ -45,7 +45,9 @@ impl ToArgs for Cli {
     fn to_args(&self) -> Vec<OsString> {
         let mut args = Vec::new();
         args.extend(self.global_args.to_args());
-        args.extend(self.command.to_args());
+        if let Some(command) = &self.command {
+            args.extend(command.to_args());
+        }
         args
     }
 }
