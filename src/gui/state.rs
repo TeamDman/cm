@@ -123,6 +123,12 @@ pub struct AppState {
     pub save_all_inputs_to_same_folder: bool,
     /// User-selected shared output folder, when saving all inputs together
     pub shared_output_dir: Option<PathBuf>,
+    /// Whether prior generated files at planned output paths should be overwritten
+    pub overwrite_existing_outputs: bool,
+    /// Pending overwrite confirmation for Process All
+    pub confirm_overwrite_process_all: bool,
+    /// Pending overwrite confirmation for Process Selected
+    pub confirm_overwrite_process_selected: bool,
     /// Cached output info for the selected image
     pub selected_output_info: Option<OutputImageInfo>,
     /// Whether output info is being calculated in the background
@@ -265,6 +271,9 @@ impl Default for AppState {
             flatten_output_hierarchy: false,
             save_all_inputs_to_same_folder: false,
             shared_output_dir: None,
+            overwrite_existing_outputs: true,
+            confirm_overwrite_process_all: false,
+            confirm_overwrite_process_selected: false,
             selected_output_info: None,
             output_info_loading: false,
             process_all_running: false,
@@ -686,6 +695,7 @@ impl AppState {
         let renamed_files = self.renamed_files.clone();
         let input_paths = self.input_paths.clone();
         let output_path_options = self.output_path_options();
+        let overwrite_existing_outputs = self.overwrite_existing_outputs;
         let reserved_output_paths = Arc::new(Mutex::new(HashSet::new()));
         let sender = self.background_sender.clone();
         let auto_search_on_process = self.auto_search_on_process;
@@ -780,9 +790,10 @@ impl AppState {
                     return;
                 };
 
-                let output_path = image_processing::reserve_available_output_path(
+                let output_path = image_processing::reserve_output_path(
                     &output_path,
                     &reserved_output_paths,
+                    overwrite_existing_outputs,
                 );
 
                 if let Some(parent) = output_path.parent()
@@ -1015,6 +1026,7 @@ impl AppState {
         let auto_search_only_if_sku = self.auto_search_only_if_sku;
         let input_paths = self.input_paths.clone();
         let output_path_options = self.output_path_options();
+        let overwrite_existing_outputs = self.overwrite_existing_outputs;
 
         self.process_all_running = true;
         self.process_all_progress = Some((0, 1));
@@ -1075,9 +1087,10 @@ impl AppState {
                     return Err(eyre::eyre!("Could not calculate output path"));
                 };
                 let reserved_output_paths = Mutex::new(HashSet::new());
-                let output_path = image_processing::reserve_available_output_path(
+                let output_path = image_processing::reserve_output_path(
                     &output_path,
                     &reserved_output_paths,
+                    overwrite_existing_outputs,
                 );
 
                 // Create output directory if needed

@@ -29,7 +29,11 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
                 }
                 ui.add_enabled(false, process_all_btn);
             } else if ui.add(process_all_btn).clicked() {
-                state.process_all();
+                if state.overwrite_existing_outputs {
+                    state.confirm_overwrite_process_all = true;
+                } else {
+                    state.process_all();
+                }
             }
 
             // Process Selected button - disable while processing or if nothing selected
@@ -39,10 +43,19 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
             if !can_process_selected {
                 ui.add_enabled(false, process_selected_btn);
             } else if ui.add(process_selected_btn).clicked() {
-                state.process_selected();
+                if state.overwrite_existing_outputs {
+                    state.confirm_overwrite_process_selected = true;
+                } else {
+                    state.process_selected();
+                }
             }
         });
     });
+
+    ui.checkbox(&mut state.overwrite_existing_outputs, "Replace previous outputs")
+        .on_hover_text("Overwrite files at the planned output paths. Same-run name conflicts still get numbered, and unrelated files are not removed.");
+
+    draw_overwrite_confirmation(ui, state);
 
     // Show processing progress if running
     if state.process_all_running {
@@ -174,4 +187,41 @@ fn draw_shared_output_folder_controls(ui: &mut egui::Ui, state: &mut AppState) {
         }
     });
     ui.separator();
+}
+
+fn draw_overwrite_confirmation(ui: &mut egui::Ui, state: &mut AppState) {
+    let mut action = None;
+    if state.confirm_overwrite_process_all {
+        action = Some(("Process All", true));
+    } else if state.confirm_overwrite_process_selected {
+        action = Some(("Process Selected", false));
+    }
+
+    let Some((label, process_all)) = action else {
+        return;
+    };
+
+    egui::Window::new("Replace previous outputs?")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ui.ctx(), |ui| {
+            ui.label("Existing files at planned output paths will be overwritten.");
+            ui.label("Unrelated files in the output folder will not be removed.");
+            ui.horizontal(|ui| {
+                if ui.button(label).clicked() {
+                    state.confirm_overwrite_process_all = false;
+                    state.confirm_overwrite_process_selected = false;
+                    if process_all {
+                        state.process_all();
+                    } else {
+                        state.process_selected();
+                    }
+                }
+                if ui.button("Cancel").clicked() {
+                    state.confirm_overwrite_process_all = false;
+                    state.confirm_overwrite_process_selected = false;
+                }
+            });
+        });
 }

@@ -984,11 +984,27 @@ pub fn reserve_available_output_path<S: BuildHasher>(
     desired_path: &Path,
     reserved_paths: &Mutex<HashSet<PathBuf, S>>,
 ) -> PathBuf {
+    reserve_output_path(desired_path, reserved_paths, false)
+}
+
+/// Reserve an output path for this run.
+///
+/// When `overwrite_existing` is true, existing files on disk do not cause a
+/// numbered suffix; only paths already reserved by the current run do.
+///
+/// # Panics
+/// Panics if the mutex for reserved paths cannot be locked.
+#[must_use]
+pub fn reserve_output_path<S: BuildHasher>(
+    desired_path: &Path,
+    reserved_paths: &Mutex<HashSet<PathBuf, S>>,
+    overwrite_existing: bool,
+) -> PathBuf {
     let mut reserved = reserved_paths.lock().unwrap();
     let mut candidate = desired_path.to_path_buf();
     let mut suffix = 1_u32;
 
-    while candidate.exists() || reserved.contains(&candidate) {
+    while reserved.contains(&candidate) || (!overwrite_existing && candidate.exists()) {
         candidate = numbered_path(desired_path, suffix);
         suffix += 1;
     }
@@ -1190,6 +1206,34 @@ mod tests {
         let path = reserve_available_output_path(&desired, &reserved);
 
         assert_eq!(path, dir.path().join("photo (3).jpg"));
+        Ok(())
+    }
+
+    #[test]
+    fn reserve_output_path_overwrites_existing_file_when_enabled() -> Result<()> {
+        let dir = tempdir()?;
+        let desired = dir.path().join("photo.jpg");
+        fs::write(&desired, b"existing")?;
+
+        let reserved = Mutex::new(HashSet::new());
+        let path = reserve_output_path(&desired, &reserved, true);
+
+        assert_eq!(path, desired);
+        Ok(())
+    }
+
+    #[test]
+    fn reserve_output_path_still_numbers_same_run_conflicts() -> Result<()> {
+        let dir = tempdir()?;
+        let desired = dir.path().join("photo.jpg");
+        fs::write(&desired, b"existing")?;
+
+        let reserved = Mutex::new(HashSet::new());
+        let first = reserve_output_path(&desired, &reserved, true);
+        let second = reserve_output_path(&desired, &reserved, true);
+
+        assert_eq!(first, desired);
+        assert_eq!(second, dir.path().join("photo (1).jpg"));
         Ok(())
     }
 
