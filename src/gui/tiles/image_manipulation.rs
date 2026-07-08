@@ -2,6 +2,7 @@
 
 use crate::gui::state::AppState;
 use crate::image_processing::BinarizationMode;
+use crate::image_processing::DEFAULT_MAX_FILE_SIZE_BYTES;
 use eframe::egui;
 use std::fs;
 
@@ -117,12 +118,12 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
                 .changed();
 
             if enabled_changed {
-                state.max_file_size_bytes = max_size_enabled.then_some(500 * 1024);
+                state.max_file_size_bytes = max_size_enabled.then_some(DEFAULT_MAX_FILE_SIZE_BYTES);
             }
 
             let mut max_size_kb = state
                 .max_file_size_bytes
-                .unwrap_or(500 * 1024)
+                .unwrap_or(DEFAULT_MAX_FILE_SIZE_BYTES)
                 .div_ceil(1024);
             let size_changed = ui
                 .add_enabled(

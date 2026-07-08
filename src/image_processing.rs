@@ -20,6 +20,9 @@ use std::sync::Mutex;
 /// Maximum preview dimension (width or height)
 const MAX_PREVIEW_SIZE: u32 = 1024;
 
+/// Default maximum output file size used when the GUI setting is enabled.
+pub const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 1024 * 1024;
+
 /// Result of processing a single image
 #[derive(Clone, Debug)]
 pub struct ProcessedImage {
@@ -1171,6 +1174,10 @@ mod tests {
         Ok(data)
     }
 
+    #[test]
+    fn default_max_file_size_is_one_mb() {
+        assert_eq!(DEFAULT_MAX_FILE_SIZE_BYTES, 1024 * 1024);
+    }
     #[test]
     fn reserve_available_output_path_continues_numbered_conflicts() -> Result<()> {
         let dir = tempdir()?;
