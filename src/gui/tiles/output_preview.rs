@@ -5,8 +5,8 @@ use crate::gui::state::AppState;
 use crate::gui::tree_view::group_files_with_renames_and_options;
 use crate::gui::tree_view::open_in_explorer;
 use crate::gui::tree_view::show_rename_group_with_output_path;
+use crate::gui::tree_view::{FileStatus, status_color};
 use crate::image_processing::get_output_dir;
-use eframe::egui::Color32;
 use eframe::egui::ScrollArea;
 use eframe::egui::{self};
 
@@ -71,13 +71,13 @@ pub fn draw_output_preview_tile(ui: &mut egui::Ui, state: &mut AppState) {
 
     // Legend
     ui.horizontal(|ui| {
-        ui.colored_label(Color32::LIGHT_GREEN, "●");
+        ui.colored_label(status_color(ui, FileStatus::Ok), "●");
         ui.label("unchanged");
         ui.add_space(8.0);
-        ui.colored_label(Color32::from_rgb(0xFF, 0xA5, 0x00), "●");
+        ui.colored_label(status_color(ui, FileStatus::Renamed), "●");
         ui.label("renamed");
         ui.add_space(8.0);
-        ui.colored_label(Color32::RED, "●");
+        ui.colored_label(status_color(ui, FileStatus::TooLong), "●");
         ui.label("too long");
     });
 

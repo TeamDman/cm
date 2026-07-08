@@ -12,6 +12,34 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Write;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileStatus {
+    Ok,
+    Renamed,
+    TooLong,
+}
+
+#[must_use]
+pub fn status_color(ui: &egui::Ui, status: FileStatus) -> Color32 {
+    let dark_mode = ui.visuals().dark_mode;
+    match status {
+        FileStatus::Ok => {
+            if dark_mode {
+                Color32::LIGHT_GREEN
+            } else {
+                Color32::from_rgb(0x1B, 0x70, 0x33)
+            }
+        }
+        FileStatus::Renamed => {
+            if dark_mode {
+                Color32::from_rgb(0xFF, 0xA5, 0x00)
+            } else {
+                Color32::from_rgb(0xA3, 0x4D, 0x00)
+            }
+        }
+        FileStatus::TooLong => Color32::RED,
+    }
+}
 #[expect(clippy::cast_precision_loss)]
 fn depth_to_space(depth: usize) -> f32 {
     depth as f32 * 16.0
@@ -157,7 +185,7 @@ pub fn show_tree_node_with_cache(
         // Leaf node (file) - make it clickable
         ui.horizontal(|ui| {
             ui.add_space(depth_to_space(depth));
-            let color = file_color.unwrap_or(Color32::LIGHT_GREEN);
+            let color = file_color.unwrap_or_else(|| status_color(ui, FileStatus::Ok));
 
             // Check if this node is selected
             let is_selected = node
@@ -606,11 +634,11 @@ pub fn show_rename_tree_node(
         ui.horizontal(|ui| {
             ui.add_space(depth_to_space(depth));
             let color = if node.is_too_long {
-                Color32::RED
+                status_color(ui, FileStatus::TooLong)
             } else if node.was_renamed {
-                Color32::from_rgb(0xFF, 0xA5, 0x00) // Orange
+                status_color(ui, FileStatus::Renamed)
             } else {
-                Color32::LIGHT_GREEN
+                status_color(ui, FileStatus::Ok)
             };
 
             // Check if this node is selected (compare against original input path)
