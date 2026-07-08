@@ -1,10 +1,13 @@
 //! Image manipulation settings tile
 
+use crate::app_home::APP_HOME;
 use crate::gui::state::AppState;
 use crate::image_processing::BinarizationMode;
 use crate::image_processing::DEFAULT_MAX_FILE_SIZE_BYTES;
+use crate::max_file_size::MaxFileSize;
 use eframe::egui;
 use std::fs;
+use tracing::error;
 
 /// Draw the image manipulation settings tile UI
 #[expect(clippy::too_many_lines)]
@@ -119,6 +122,9 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
 
             if enabled_changed {
                 state.max_file_size_bytes = max_size_enabled.then_some(DEFAULT_MAX_FILE_SIZE_BYTES);
+                if let Err(e) = MaxFileSize::set_to(&APP_HOME, state.max_file_size_bytes) {
+                    error!("Failed to save max photo size: {}", e);
+                }
             }
 
             let mut max_size_kb = state
@@ -137,6 +143,9 @@ pub fn draw_image_manipulation_tile(ui: &mut egui::Ui, state: &mut AppState) {
 
             if max_size_enabled && size_changed {
                 state.max_file_size_bytes = Some(max_size_kb.saturating_mul(1024));
+                if let Err(e) = MaxFileSize::set_to(&APP_HOME, state.max_file_size_bytes) {
+                    error!("Failed to save max photo size: {}", e);
+                }
             }
 
             if (enabled_changed || size_changed) && state.selected_input_file.is_some() {

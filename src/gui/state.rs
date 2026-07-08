@@ -8,6 +8,7 @@ use crate::image_processing::OutputPathOptions;
 use crate::image_processing::ProcessingSettings;
 use crate::image_processing::{self};
 use crate::inputs;
+use crate::max_file_size::MaxFileSize;
 use crate::rename_rules::RenameRule;
 use chrono::DateTime;
 use chrono::Local;
@@ -259,7 +260,8 @@ impl Default for AppState {
             box_thickness: 10,
             sync_preview_pan_zoom: true,
             jpeg_quality: 90,
-            max_file_size_bytes: None,
+            max_file_size_bytes: MaxFileSize::load(&APP_HOME)
+                .map_or(None, |value| value.as_option()),
             flatten_output_hierarchy: false,
             save_all_inputs_to_same_folder: false,
             shared_output_dir: None,
@@ -304,6 +306,14 @@ impl AppState {
 
         // Update max name length
         self.max_name_length = MAX_NAME_LENGTH.load(Ordering::SeqCst);
+
+        self.max_file_size_bytes = MaxFileSize::load(&APP_HOME).map_or_else(
+            |e| {
+                error!("Failed to load max file size: {}", e);
+                None
+            },
+            |value| value.as_option(),
+        );
 
         // Invalidate rename preview cache
         self.rename_preview_key = 0;
