@@ -835,4 +835,48 @@ mod tests {
         assert_eq!(grouped[0].1[0].new_path, PathBuf::from("a/one-renamed.jpg"));
         assert_eq!(grouped[0].1[1].new_path, PathBuf::from("b/two-renamed.jpg"));
     }
+
+    #[test]
+    fn output_preview_accepts_full_filename_at_50_character_limit() {
+        let input = PathBuf::from("C:/photos");
+        let original_files = vec![input.join("source.jpg")];
+        let output_name = format!("{}.jpg", "a".repeat(46));
+        let renamed_files = vec![input.join(&output_name)];
+
+        assert_eq!(output_name.len(), 50);
+
+        let grouped = group_files_with_renames(
+            std::slice::from_ref(&input),
+            &original_files,
+            &renamed_files,
+            50,
+        );
+        let preview = &grouped[0].1[0];
+
+        assert_eq!(preview.new_path, PathBuf::from(output_name));
+        assert!(!preview.is_too_long);
+    }
+
+    #[test]
+    fn output_preview_flags_51_character_filename_when_extension_crosses_limit() {
+        let input = PathBuf::from("C:/photos");
+        let original_files = vec![input.join("source.jpg")];
+        let output_stem = "a".repeat(47);
+        let output_name = format!("{output_stem}.jpg");
+        let renamed_files = vec![input.join(&output_name)];
+
+        assert!(output_stem.len() <= 50);
+        assert_eq!(output_name.len(), 51);
+
+        let grouped = group_files_with_renames(
+            std::slice::from_ref(&input),
+            &original_files,
+            &renamed_files,
+            50,
+        );
+        let preview = &grouped[0].1[0];
+
+        assert_eq!(preview.new_path, PathBuf::from(output_name));
+        assert!(preview.is_too_long);
+    }
 }

@@ -1238,6 +1238,35 @@ mod tests {
     }
 
     #[test]
+    fn reserve_output_path_same_run_suffix_can_exceed_max_name_length() -> Result<()> {
+        const MAX_NAME_LENGTH: usize = 50;
+
+        let dir = tempdir()?;
+        let planned_name = format!("{}.jpg", "a".repeat(46));
+        let suffixed_name = format!("{} (1).jpg", "a".repeat(46));
+        assert_eq!(planned_name.len(), MAX_NAME_LENGTH);
+
+        let desired = dir.path().join(&planned_name);
+        let reserved = Mutex::new(HashSet::new());
+        let first = reserve_output_path(&desired, &reserved, true);
+        let second = reserve_output_path(&desired, &reserved, true);
+
+        assert_eq!(first, desired);
+        assert_eq!(second.extension().and_then(|ext| ext.to_str()), Some("jpg"));
+        assert_eq!(
+            second.file_name().and_then(|name| name.to_str()),
+            Some(suffixed_name.as_str())
+        );
+        assert!(
+            second
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.len() > MAX_NAME_LENGTH)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn shared_output_path_preserves_source_folder_when_not_flattened() -> Result<()> {
         let dir = tempdir()?;
         let root_a = dir.path().join("a");

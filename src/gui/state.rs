@@ -1363,3 +1363,72 @@ fn apply_rules_seq(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn length_gated_rule(find: &str, replace: &str) -> RenameRule {
+        RenameRule {
+            find: find.to_string(),
+            replace: replace.to_string(),
+            only_when_name_too_long: true,
+            ..RenameRule::default()
+        }
+    }
+
+    #[test]
+    fn apply_rules_seq_counts_extension_at_the_length_boundary() {
+        let at_limit = format!("{}.png", "a".repeat(46));
+        let over_limit = format!("{}.png", "a".repeat(47));
+        let files = vec![PathBuf::from(&at_limit), PathBuf::from(&over_limit)];
+        let rules = vec![length_gated_rule("^a", "")];
+
+        let renamed = apply_rules_seq(&files, &rules, 50, true, false);
+
+        assert_eq!(at_limit.len(), 50);
+        assert_eq!(over_limit.len(), 51);
+        assert_eq!(renamed[0], PathBuf::from(at_limit));
+        assert_eq!(renamed[1], PathBuf::from(format!("{}.png", "a".repeat(46))));
+    }
+
+    #[test]
+    fn apply_rules_seq_can_leave_a_matching_name_over_the_limit() {
+        let original = format!("x{}.jpg", "a".repeat(50));
+        let rules = vec![length_gated_rule("^x", "")];
+
+        let renamed = apply_rules_seq(&[PathBuf::from(original)], &rules, 50, true, false);
+        let renamed_name = renamed[0].file_name().unwrap().to_string_lossy();
+
+        assert_eq!(renamed_name.len(), 54);
+        assert!(renamed_name.len() > 50);
+        assert_eq!(renamed_name, format!("{}.jpg", "a".repeat(50)));
+    }
+
+    #[test]
+    fn apply_rules_seq_can_leave_an_unmatched_name_over_the_limit() {
+        let original = format!("{}.jpg", "a".repeat(47));
+        let rules = vec![length_gated_rule("^x", "")];
+
+        let renamed = apply_rules_seq(&[PathBuf::from(&original)], &rules, 50, true, false);
+        let renamed_name = renamed[0].file_name().unwrap().to_string_lossy();
+
+        assert_eq!(original.len(), 51);
+        assert_eq!(renamed_name, original);
+        assert!(renamed_name.len() > 50);
+    }
+
+    #[test]
+    fn apply_rules_seq_hyphenation_can_grow_an_at_limit_name_past_the_limit() {
+        let original = format!("{}.png", "aB".repeat(23));
+        let rules = vec![length_gated_rule("^a", "")];
+
+        let renamed = apply_rules_seq(&[PathBuf::from(&original)], &rules, 50, true, true);
+        let renamed_name = renamed[0].file_name().unwrap().to_string_lossy();
+
+        assert_eq!(original.len(), 50);
+        assert_eq!(renamed_name, format!("{}.png", "a-B".repeat(23)));
+        assert_eq!(renamed_name.len(), 73);
+        assert!(renamed_name.len() > 50);
+    }
+}
